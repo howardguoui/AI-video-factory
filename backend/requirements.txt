@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+celery[redis]
+redis
+python-dotenv
+pydantic-settings
+faster-whisper
+openai
+moviepy
+ffmpeg-python
+torch

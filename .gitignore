@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.env
+
+# Node
+node_modules/
+.next/
+.env.local
+
+# Storage
+backend/storage/*
+!backend/storage/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
