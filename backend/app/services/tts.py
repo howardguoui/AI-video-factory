@@ -81,6 +81,7 @@ def _stub_synthesize_tts(
     )
     job_dir = Path(settings.storage_path) / job_id
     dubbed_path = str(job_dir / "dubbed.wav")
+    job_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_audio_path, dubbed_path)
     return dubbed_path
 
@@ -197,7 +198,7 @@ def _synthesize_with_qwen3(
             )
             # Save wav tensor to file
             import torchaudio
-            torchaudio.save(clip_path, wav.unsqueeze(0).cpu(), sample_rate=22050)
+            torchaudio.save(clip_path, wav.unsqueeze(0).cpu(), sample_rate=16000)
             clips.append((start_sec, clip_path))
     finally:
         del model
@@ -222,6 +223,10 @@ def _synthesize_with_cosyvoice(
 
     logger.info(f"[{job_id}] Loading CosyVoice2 model on {settings.qwen_device}")
     model = CosyVoice2("iic/CosyVoice2-0.5B", load_jit=False, load_trt=False)
+    try:
+        model = model.to(settings.qwen_device)
+    except Exception:
+        pass  # CosyVoice2 may not support .to() — device selection via init args
 
     try:
         clips: list[tuple[float, str]] = []
