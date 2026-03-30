@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import settings
-from app.state import job_store, update_status
+from app.state import set_job, get_job_data
 from app.models.job import JobResponse
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ async def create_job(
     file: UploadFile | None = File(default=None),
     youtube_url: str | None = Form(default=None),
     target_lang: str = Form(default="zh"),
+    pipeline_mode: str = Form(default="dubbing"),
 ):
     if file is None and not youtube_url:
         raise HTTPException(status_code=400, detail="Either file or youtube_url must be provided")
@@ -34,28 +35,29 @@ async def create_job(
             f.write(content)
         logger.info(f"[{job_id}] Saved upload: {input_path} ({len(content)} bytes)")
 
-    job_store[job_id] = {
+    set_job(job_id, {
         "job_id": job_id,
         "status": "queued",
         "step": 0,
         "target_lang": target_lang,
+        "pipeline_mode": pipeline_mode,
         "input_path": input_path,
         "youtube_url": youtube_url,
         "output_path": None,
         "error": None,
-    }
+    })
 
     # Import here to avoid circular import at module load
     from app.worker import process_video
-    process_video.delay(job_id, target_lang)
-    logger.info(f"[{job_id}] Job queued (lang={target_lang})")
+    process_video.delay(job_id, target_lang, pipeline_mode)
+    logger.info(f"[{job_id}] Job queued (lang={target_lang}, mode={pipeline_mode})")
 
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str):
-    job = job_store.get(job_id)
+    job = get_job_data(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
     return JobResponse(**job)

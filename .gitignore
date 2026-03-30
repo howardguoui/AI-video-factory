@@ -18,3 +18,5 @@ backend/storage/*
 # OS
 .DS_Store
 Thumbs.db
+
+Qwen3-TTS

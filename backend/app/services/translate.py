@@ -74,7 +74,7 @@ def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list
     user_content = json.dumps(texts, ensure_ascii=False)
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model=settings.translation_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -89,7 +89,7 @@ def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list
     except json.JSONDecodeError:
         logger.warning("GPT-4o returned malformed JSON, retrying with stricter prompt")
         retry_response = client.chat.completions.create(
-            model="gpt-4o",
+            model=settings.translation_model,
             messages=[
                 {"role": "system", "content": system_prompt + " You MUST return valid JSON only."},
                 {"role": "user", "content": user_content},
@@ -125,7 +125,10 @@ def translate_srt(srt_path: str, target_lang: str) -> str:
         f"in batches of {BATCH_SIZE}"
     )
 
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.ollama_base_url,
+    )
     translated_segments: list[Segment] = []
 
     for i in range(0, len(segments), BATCH_SIZE):
