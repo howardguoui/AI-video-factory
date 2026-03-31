@@ -62,17 +62,8 @@ def rebuild_srt(segments: list[Segment]) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
-def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list[str]:
-    """Translate a batch of texts via GPT-4o. Returns a list of translated strings."""
-    lang_name = LANGUAGE_NAMES.get(target_lang, target_lang)
-    system_prompt = (
-        f"You are a professional subtitle translator. Translate the following texts to {lang_name}. "
-        "Preserve tone, emotion, and natural speech patterns. "
-        "Return ONLY a JSON array of translated strings in the same order as input. "
-        "No explanations, no extra text."
-    )
-    user_content = json.dumps(texts, ensure_ascii=False)
-
+def _call_llm(client: OpenAI, system_prompt: str, user_content: str) -> str:
+    """Single LLM call, returns raw string content."""
     response = client.chat.completions.create(
         model=settings.translation_model,
         messages=[
@@ -81,31 +72,72 @@ def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list
         ],
         temperature=0.3,
     )
-    raw = response.choices[0].message.content.strip()
+    return response.choices[0].message.content.strip()
 
-    # Parse JSON — retry once if malformed
+
+def _parse_json_list(raw: str) -> list | None:
+    """Try to parse a JSON list from the model response. Returns None on failure."""
     try:
         result = json.loads(raw)
+        return result if isinstance(result, list) else None
     except json.JSONDecodeError:
-        logger.warning("GPT-4o returned malformed JSON, retrying with stricter prompt")
-        retry_response = client.chat.completions.create(
-            model=settings.translation_model,
-            messages=[
-                {"role": "system", "content": system_prompt + " You MUST return valid JSON only."},
-                {"role": "user", "content": user_content},
-                {"role": "assistant", "content": raw},
-                {"role": "user", "content": "Please return ONLY the JSON array, nothing else."},
-            ],
-            temperature=0,
-        )
-        result = json.loads(retry_response.choices[0].message.content.strip())
+        # Strip markdown fences if present
+        stripped = raw.strip("`").strip()
+        if stripped.startswith("json"):
+            stripped = stripped[4:].strip()
+        try:
+            result = json.loads(stripped)
+            return result if isinstance(result, list) else None
+        except json.JSONDecodeError:
+            return None
 
-    if not isinstance(result, list) or len(result) != len(texts):
-        raise ValueError(
-            f"Translation returned {len(result) if isinstance(result, list) else 'non-list'} "
-            f"items, expected {len(texts)}"
+
+def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list[str]:
+    """
+    Translate a batch of subtitle texts. If the model returns the wrong item
+    count (common with small local models that merge adjacent lines), the batch
+    is split in half and each half is retried recursively. Single-item batches
+    that still fail fall back to the original text so the pipeline never halts.
+    """
+    lang_name = LANGUAGE_NAMES.get(target_lang, target_lang)
+    system_prompt = (
+        f"You are a professional subtitle translator. Translate the following texts to {lang_name}. "
+        "Preserve tone, emotion, and natural speech patterns. "
+        "Each input line is a separate subtitle segment — do NOT merge or split lines. "
+        f"Return ONLY a JSON array of exactly {len(texts)} translated strings in the same order. "
+        "No explanations, no extra text."
+    )
+    user_content = json.dumps(texts, ensure_ascii=False)
+
+    raw = _call_llm(client, system_prompt, user_content)
+    result = _parse_json_list(raw)
+
+    # If malformed JSON, retry once with stricter prompt
+    if result is None:
+        logger.warning(f"Malformed JSON for batch of {len(texts)}, retrying")
+        strict_prompt = system_prompt + " You MUST return valid JSON only — nothing else."
+        raw = _call_llm(client, strict_prompt, user_content)
+        result = _parse_json_list(raw)
+
+    # Correct count — happy path
+    if result is not None and len(result) == len(texts):
+        return [str(t) for t in result]
+
+    # Wrong count: split and retry halves recursively
+    if len(texts) > 1:
+        got = len(result) if result is not None else "non-list"
+        logger.warning(
+            f"Count mismatch: got {got}, expected {len(texts)} — "
+            f"splitting batch in half and retrying"
         )
-    return [str(t) for t in result]
+        mid = len(texts) // 2
+        left = _translate_batch(client, texts[:mid], target_lang)
+        right = _translate_batch(client, texts[mid:], target_lang)
+        return left + right
+
+    # Single item still failing — use original text as fallback
+    logger.warning(f"Single-item translation failed, keeping original: {texts[0][:60]!r}")
+    return list(texts)
 
 
 def _detect_ollama_model() -> str:
