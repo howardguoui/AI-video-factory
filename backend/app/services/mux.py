@@ -107,18 +107,27 @@ def create_bilingual_download(
     translated_srt_path: str,
 ) -> str:
     """
-    Produce a single download-ready MP4 with both subtitle tracks burned in
-    using FFmpeg drawtext filter — matching the player overlay style
-    (yellow Chinese bottom, white English above, semi-transparent black box).
+    Produce a download-ready MP4 with both subtitle tracks burned in using
+    FFmpeg's 'subtitles' filter (libass). This replaces the old per-segment
+    drawtext approach which evaluated 1000+ conditions on every frame of a
+    2-hour video, taking ~5 minutes. libass processes the SRT natively and
+    runs in seconds regardless of segment count.
+
+    Layout: translated (Chinese/target) at bottom in yellow, source (English)
+    above it in white, both with a semi-transparent black outline.
     """
     import subprocess
-    from app.services.translate import parse_srt
+    import shutil
 
     job_dir = Path(settings.storage_path) / job_id
     output_video = str(job_dir / "output.mp4")
     dl_path = str(job_dir / "bilingual_with_subs.mp4")
 
-    # Get actual video dimensions for font size scaling
+    # Clean up leftover drawtext_tmp from any previous runs
+    old_tmp = job_dir / "drawtext_tmp"
+    if old_tmp.exists():
+        shutil.rmtree(old_tmp, ignore_errors=True)
+
     probe = ffmpeg.probe(output_video)
     vs = next(s for s in probe["streams"] if s["codec_type"] == "video")
     height = int(vs["height"])
@@ -126,68 +135,47 @@ def create_bilingual_download(
     cn_size = max(int(height * 0.040), 20)
     en_size = max(int(height * 0.028), 14)
     cn_margin = max(int(height * 0.020), 10)
-    box_pad = max(int(cn_size * 0.25), 4)
+    en_margin = cn_margin + cn_size + 8
 
-    # Font: Microsoft YaHei (supports CJK + Latin)
-    font = "C\\\\:/Windows/Fonts/msyh.ttc"
+    # ASS colour format: &HAABBGGRR  (AA=00 → fully opaque)
+    # Yellow #FDE047 → R=FD G=E0 B=47 → &H0047E0FD
+    cn_colour = "&H0047E0FD"
+    en_colour = "&H00FFFFFF"
 
-    # Build one drawtext chain: translated (Chinese/target) at bottom, source (English) above
-    with open(translated_srt_path, encoding="utf-8") as f:
-        cn_segs = parse_srt(f.read())
-    with open(source_srt_path, encoding="utf-8") as f:
-        en_segs = parse_srt(f.read())
+    # ASS force_style — Alignment=2 = bottom-centre
+    cn_style = (
+        f"FontName=Microsoft YaHei,FontSize={cn_size},"
+        f"PrimaryColour={cn_colour},OutlineColour=&H99000000,"
+        f"BorderStyle=1,Outline=1,Shadow=0,"
+        f"Alignment=2,MarginV={cn_margin}"
+    )
+    en_style = (
+        f"FontName=Microsoft YaHei,FontSize={en_size},"
+        f"PrimaryColour={en_colour},OutlineColour=&H99000000,"
+        f"BorderStyle=1,Outline=1,Shadow=0,"
+        f"Alignment=2,MarginV={en_margin}"
+    )
 
-    # Write each segment's text to a temp file so drawtext can read it
-    # (avoids shell quoting nightmares with special characters)
-    tmp_dir = job_dir / "drawtext_tmp"
-    tmp_dir.mkdir(exist_ok=True)
+    # FFmpeg subtitles filter uses forward slashes; colon in Windows drive
+    # letter must be escaped as \: inside the filter option string.
+    def _ff_path(p: str) -> str:
+        return p.replace("\\", "/").replace(":", "\\:")
 
-    filter_parts: list[str] = []
-
-    for i, seg in enumerate(cn_segs):
-        txt_file = tmp_dir / f"cn_{i}.txt"
-        txt_file.write_text(seg.text.replace("\n", " "), encoding="utf-8")
-        s = _srt_to_sec(seg.start)
-        e = _srt_to_sec(seg.end)
-        filter_parts.append(
-            f"drawtext=fontfile={font}:textfile=drawtext_tmp/cn_{i}.txt"
-            f":fontcolor=0xFDE047:fontsize={cn_size}"
-            f":box=1:boxcolor=black@0.65:boxborderw={box_pad}"
-            f":x=(w-text_w)/2:y=h-{cn_margin}-text_h"
-            f":enable='between(t,{s:.3f},{e:.3f})'"
-        )
-
-    for i, seg in enumerate(en_segs):
-        txt_file = tmp_dir / f"en_{i}.txt"
-        txt_file.write_text(seg.text.replace("\n", " "), encoding="utf-8")
-        s = _srt_to_sec(seg.start)
-        e = _srt_to_sec(seg.end)
-        filter_parts.append(
-            f"drawtext=fontfile={font}:textfile=drawtext_tmp/en_{i}.txt"
-            f":fontcolor=white:fontsize={en_size}"
-            f":box=1:boxcolor=black@0.65:boxborderw={box_pad}"
-            f":x=(w-text_w)/2:y=h-{cn_margin}-{cn_size}-8-text_h"
-            f":enable='between(t,{s:.3f},{e:.3f})'"
-        )
-
-    vf = ",".join(filter_parts)
-
-    # Write the filter to a file to avoid Windows' 32,767-char command line limit.
-    # With 500+ subtitle segments the -vf string easily exceeds this limit.
-    filter_script = job_dir / "vf_script.txt"
-    filter_script.write_text(vf, encoding="utf-8")
+    vf = (
+        f"subtitles='{_ff_path(translated_srt_path)}':force_style='{cn_style}',"
+        f"subtitles='{_ff_path(source_srt_path)}':force_style='{en_style}'"
+    )
 
     cmd = [
         "ffmpeg", "-y",
-        "-i", "output.mp4",
-        "-filter_script:v", str(filter_script),
+        "-i", output_video,
+        "-vf", vf,
         "-vcodec", "libx264", "-crf", "18", "-preset", "fast",
         "-acodec", "copy",
-        "bilingual_with_subs.mp4",
+        dl_path,
     ]
-    logger.info(f"[{job_id}] Burning bilingual drawtext subtitles ({height}p)")
-    result = subprocess.run(cmd, cwd=str(job_dir), capture_output=True)
-    filter_script.unlink(missing_ok=True)
+    logger.info(f"[{job_id}] Burning bilingual subtitles via libass ({height}p)")
+    result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
         raise RuntimeError(
             f"FFmpeg bilingual burn failed: {result.stderr.decode(errors='replace')}"
