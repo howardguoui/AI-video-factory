@@ -108,8 +108,33 @@ def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list
     return [str(t) for t in result]
 
 
+def _detect_ollama_model() -> str:
+    """
+    Query Ollama's /api/ps endpoint to find the currently loaded model.
+    Falls back to the configured translation_model if Ollama is unreachable.
+    Returns a display string like 'qwen3:8b (running)' or 'qwen3:8b (config, not loaded)'.
+    """
+    import urllib.request
+    import urllib.error
+
+    base = settings.ollama_base_url.rstrip("/").replace("/v1", "")
+    configured = settings.translation_model
+    try:
+        with urllib.request.urlopen(f"{base}/api/ps", timeout=3) as resp:
+            data = json.loads(resp.read())
+        models = [m.get("name", "") for m in data.get("models", [])]
+        if models:
+            running = ", ".join(models)
+            loaded = configured in running
+            status = "running" if loaded else f"running: {running}"
+            return f"{configured} ({status})"
+        return f"{configured} (configured, none loaded in Ollama)"
+    except Exception:
+        return f"{configured} (Ollama unreachable — using configured value)"
+
+
 def translate_srt(srt_path: str, target_lang: str) -> str:
-    """Translate an SRT file to target_lang using GPT-4o. Returns path to translated SRT."""
+    """Translate an SRT file to target_lang using Ollama. Returns path to translated SRT."""
     job_dir = Path(srt_path).parent
     translated_srt_path = str(job_dir / "translated.srt")
 
@@ -120,9 +145,10 @@ def translate_srt(srt_path: str, target_lang: str) -> str:
     if not segments:
         raise ValueError(f"No segments parsed from {srt_path}")
 
+    model_info = _detect_ollama_model()
     logger.info(
         f"Translating {len(segments)} segments to {LANGUAGE_NAMES.get(target_lang, target_lang)} "
-        f"in batches of {BATCH_SIZE}"
+        f"in batches of {BATCH_SIZE} | model: {model_info}"
     )
 
     client = OpenAI(

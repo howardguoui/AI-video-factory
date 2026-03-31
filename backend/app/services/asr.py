@@ -149,8 +149,15 @@ def transcribe(audio_path: str, job_id: str) -> str:
             logger.info(f"[{job_id}] Chunk {idx + 1} done: {len(segs)} segments")
 
     finally:
+        # Only delete the CTranslate2 model object — do NOT call torch.cuda.empty_cache()
+        # here. CTranslate2 manages its own CUDA allocator separately from PyTorch.
+        # Calling torch.cuda.empty_cache() immediately after CTranslate2's destructor
+        # runs causes a CUDA context conflict that produces a fatal C-level crash,
+        # bypassing all Python exception handling and killing the worker process.
+        # The worker's _free_gpu() already handles PyTorch cache cleanup after the task.
+        import gc
         del model
-        torch.cuda.empty_cache()
+        gc.collect()
         logger.info(f"[{job_id}] Whisper model unloaded")
         if chunks_dir.exists():
             shutil.rmtree(chunks_dir, ignore_errors=True)
