@@ -19,8 +19,7 @@ class Settings(BaseSettings):
     use_stub_tts: bool = True
     # ASR performance tuning
     whisper_beam_size: int = 1          # 1=fastest, 5=most accurate
-    asr_chunk_minutes: int = 10         # split audio into N-minute chunks
-    asr_workers: int = 4                # parallel threads per transcription job
+    asr_chunk_minutes: int = 10         # split audio into N-minute chunks (sequential, VAD per chunk)
 
 
 settings = Settings()

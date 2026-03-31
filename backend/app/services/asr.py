@@ -2,7 +2,6 @@ import logging
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -100,17 +99,22 @@ def _transcribe_chunk(model, chunk_path: str, offset: float, beam_size: int) -> 
 
 def transcribe(audio_path: str, job_id: str) -> str:
     """
-    Transcribe audio to SRT using faster-whisper with three performance optimisations:
-      1. VAD pre-filter  — skips silence segments before feeding to Whisper
-      2. Audio chunking  — splits long audio into asr_chunk_minutes pieces
-      3. Parallel workers — ThreadPoolExecutor processes chunks concurrently
-         (CTranslate2 releases the GIL during inference; one model, N threads)
+    Transcribe audio to SRT using faster-whisper with two performance optimisations:
+      1. VAD pre-filter  — skips silence segments before feeding to Whisper (~1.4x free speedup)
+      2. Audio chunking  — splits long audio into asr_chunk_minutes pieces, processed
+                           sequentially with one shared model instance.
+
+    Note: GPU parallelism (concurrent threads on the same CTranslate2 model) was removed
+    because concurrent CUDA operations on one model instance can cause a fatal process crash
+    that bypasses Python exception handling entirely.
+    VAD alone removes 70-90% of audio per chunk, making sequential processing fast enough.
     """
     import torch
     from faster_whisper import WhisperModel
 
     job_dir = Path(settings.storage_path) / job_id
     srt_path = str(job_dir / "source.srt")
+    chunks_dir = job_dir / "chunks"
 
     device = settings.whisper_device
     compute_type = settings.whisper_compute_type
@@ -132,48 +136,17 @@ def transcribe(audio_path: str, job_id: str) -> str:
         compute_type=compute_type,
     )
 
-    chunks_dir = Path(settings.storage_path) / job_id / "chunks"
+    all_segments: list = []
 
     try:
         chunk_seconds = settings.asr_chunk_minutes * 60
         chunks = _split_audio_chunks(audio_path, chunk_seconds, job_id)
 
-        if len(chunks) == 1:
-            # Short video: transcribe directly, no threading overhead
-            logger.info(f"[{job_id}] Single chunk — transcribing directly with VAD")
-            all_segments = _transcribe_chunk(
-                model, audio_path, 0.0, settings.whisper_beam_size
-            )
-        else:
-            logger.info(
-                f"[{job_id}] Transcribing {len(chunks)} chunks "
-                f"with {settings.asr_workers} parallel workers"
-            )
-            chunk_results: list[list | None] = [None] * len(chunks)
-
-            def _process(args: tuple[int, str, float]) -> tuple[int, list]:
-                idx, path, offset = args
-                logger.debug(f"[{job_id}] Worker transcribing chunk {idx} (offset={offset:.1f}s)")
-                segs = _transcribe_chunk(model, path, offset, settings.whisper_beam_size)
-                logger.debug(f"[{job_id}] Chunk {idx} done: {len(segs)} segments")
-                return idx, segs
-
-            with ThreadPoolExecutor(max_workers=settings.asr_workers) as pool:
-                futures = {
-                    pool.submit(_process, (i, cp, off)): i
-                    for i, (cp, off) in enumerate(chunks)
-                }
-                for future in as_completed(futures):
-                    idx, segs = future.result()
-                    chunk_results[idx] = segs
-
-            # Merge chunks in order
-            all_segments = []
-            for segs in chunk_results:
-                if segs:
-                    all_segments.extend(segs)
-
-        logger.info(f"[{job_id}] Transcription complete: {len(all_segments)} segments total")
+        for idx, (chunk_path, offset) in enumerate(chunks):
+            logger.info(f"[{job_id}] Chunk {idx + 1}/{len(chunks)} (offset={offset:.0f}s)")
+            segs = _transcribe_chunk(model, chunk_path, offset, settings.whisper_beam_size)
+            all_segments.extend(segs)
+            logger.info(f"[{job_id}] Chunk {idx + 1} done: {len(segs)} segments")
 
     finally:
         del model
@@ -181,6 +154,8 @@ def transcribe(audio_path: str, job_id: str) -> str:
         logger.info(f"[{job_id}] Whisper model unloaded")
         if chunks_dir.exists():
             shutil.rmtree(chunks_dir, ignore_errors=True)
+
+    logger.info(f"[{job_id}] Transcription complete: {len(all_segments)} segments total")
 
     srt_content = segments_to_srt(all_segments)
     with open(srt_path, "w", encoding="utf-8") as f:
