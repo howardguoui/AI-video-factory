@@ -172,16 +172,22 @@ def create_bilingual_download(
 
     vf = ",".join(filter_parts)
 
+    # Write the filter to a file to avoid Windows' 32,767-char command line limit.
+    # With 500+ subtitle segments the -vf string easily exceeds this limit.
+    filter_script = job_dir / "vf_script.txt"
+    filter_script.write_text(vf, encoding="utf-8")
+
     cmd = [
         "ffmpeg", "-y",
         "-i", "output.mp4",
-        "-vf", vf,
+        "-filter_script:v", str(filter_script),
         "-vcodec", "libx264", "-crf", "18", "-preset", "fast",
         "-acodec", "copy",
         "bilingual_with_subs.mp4",
     ]
     logger.info(f"[{job_id}] Burning bilingual drawtext subtitles ({height}p)")
     result = subprocess.run(cmd, cwd=str(job_dir), capture_output=True)
+    filter_script.unlink(missing_ok=True)
     if result.returncode != 0:
         raise RuntimeError(
             f"FFmpeg bilingual burn failed: {result.stderr.decode(errors='replace')}"
