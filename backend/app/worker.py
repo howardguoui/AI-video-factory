@@ -25,10 +25,6 @@ celery_app.conf.task_serializer = "json"
 celery_app.conf.result_serializer = "json"
 celery_app.conf.accept_content = ["json"]
 
-# Re-queue the task if the worker process is killed mid-run (CUDA crash, OOM, SIGKILL).
-# The message stays in Redis until the task is explicitly acknowledged on completion.
-celery_app.conf.task_acks_late = True
-celery_app.conf.task_reject_on_worker_lost = True
 
 # Soft limit raises SoftTimeLimitExceeded inside the task (catchable).
 # Hard limit sends SIGKILL after an additional grace period.
