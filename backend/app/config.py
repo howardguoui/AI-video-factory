@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     translation_model: str = "huihui_ai/qwen3-vl-abliterated:8b-instruct"
     # TTS stub mode — set to false once Qwen3-TTS or CosyVoice2 is installed
     use_stub_tts: bool = True
+    # ASR performance tuning
+    whisper_beam_size: int = 1          # 1=fastest, 5=most accurate
+    asr_chunk_minutes: int = 10         # split audio into N-minute chunks
+    asr_workers: int = 4                # parallel threads per transcription job
 
 
 settings = Settings()
