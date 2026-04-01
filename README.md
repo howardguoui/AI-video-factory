@@ -1,4 +1,4 @@
-# AI Video Translation Platform
+# VideoFactory — AI Video Pipeline
 
 A fully local, GPU-accelerated pipeline that translates videos from any language into Chinese (or other target languages). Supports two modes: **Full Dubbing** (replaces audio with AI-synthesized voice) and **Subtitles Only** (keeps original audio, adds bilingual subtitles).
 
@@ -66,8 +66,8 @@ Install the following before starting:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/howardguoui/AI-video-transform.git
-cd AI-video-transform
+git clone https://github.com/howardguoui/AI-video-factory.git
+cd AI-video-factory
 ```
 
 ### 2. Backend — Python environment
@@ -202,7 +202,7 @@ Open http://localhost:3000 in your browser.
 ## Project Structure
 
 ```
-AI-video-transform/
+AI-video-factory/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI app, CORS, router mount
@@ -263,3 +263,58 @@ Both tracks have a semi-transparent black background box (`black@0.65`). Font: M
 ## License
 
 MIT
+
+## F-Drive Model Paths (Current Setup)
+
+Models are stored on a separate drive to avoid clutter in the project folder. These paths are set via `backend/.env`:
+
+| Model | Location |
+|-------|----------|
+| Qwen3-TTS weights | `F:\Qwen3-TTS\Qwen3-TTS-12Hz-1.7B-Base\` |
+| Qwen3-TTS package | `F:\Qwen3-TTS\qwen_tts\` (editable install) |
+| IndexTTS | `F:\index-tts-20\index-tts-20\` |
+
+```env
+QWEN3_TTS_ROOT=F:/Qwen3-TTS
+INDEXTTS_ROOT=F:/index-tts-20/index-tts-20
+```
+
+## Venv Rebuild (After Moving the Project)
+
+Windows venv `.exe` launchers store the Python path as a binary string — they **will break** if you rename or move the project folder. Rebuild from scratch:
+
+```powershell
+# 1. Delete the broken venv
+Remove-Item -Recurse -Force backend\venv
+
+# 2. Recreate it
+python -m venv backend\venv
+
+# 3. Install PyTorch FIRST — must use the PyTorch wheel index (not PyPI)
+backend\venv\Scripts\python.exe -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+# 4. Install remaining dependencies
+backend\venv\Scripts\python.exe -m pip install fastapi uvicorn celery redis pydantic-settings faster-whisper ffmpeg-python soundfile numpy openai python-multipart
+
+# 5. Re-link Qwen3-TTS from F drive
+backend\venv\Scripts\python.exe -m pip install -e F:\Qwen3-TTS
+```
+
+> **RTX 5070 Ti note:** requires `cu128` builds (sm_120 / Blackwell). If cu128 stable isn't available for your Python version, use `--pre` nightly builds with the same `--index-url`.
+
+> **flash-attn note:** may fail on Blackwell. Uninstall if you see DLL errors — the pipeline runs without it:
+> ```powershell
+> backend\venv\Scripts\python.exe -m pip uninstall flash-attn -y
+> ```
+
+## Starting the Application (Without activate)
+
+Since `.exe` launchers can break after a move, use `python.exe -m` directly:
+
+```powershell
+# FastAPI (from backend\)
+.\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# Celery worker (from backend\)
+.\venv\Scripts\python.exe -m celery -A app.worker worker --loglevel=info -P solo -n worker1@%COMPUTERNAME%
+```

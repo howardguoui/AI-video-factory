@@ -19,4 +19,9 @@ backend/storage/*
 .DS_Store
 Thumbs.db
 
-Qwen3-TTS
+# Local model folders (stored on F:/ — not committed)
+Qwen3-TTS/
+
+# Generated pip freeze files
+backend/requirements_freeze.txt
+backend/requirements_no_torch.txt

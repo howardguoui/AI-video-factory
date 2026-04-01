@@ -367,7 +367,7 @@ def _synthesize_with_qwen3(
     import soundfile as sf
     from qwen_tts import Qwen3TTSModel  # type: ignore
 
-    model_path = str(Path("E:/ClaudeProject/AI-video-translate/Qwen3-TTS/Qwen3-TTS-12Hz-1.7B-Base"))
+    model_path = str(Path(settings.qwen3_tts_root) / "Qwen3-TTS-12Hz-1.7B-Base")
 
     ref_text = _ref_text_from_srt(source_srt_path, ref_start_sec, ref_duration)
     logger.info(f"[{job_id}] Reference text (from SRT): {ref_text[:80]}")

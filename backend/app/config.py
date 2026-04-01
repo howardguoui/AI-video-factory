@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     asr_chunk_minutes: int = 10         # split audio into N-minute chunks (sequential, VAD per chunk)
     # IndexTTS — root directory of the index-tts-20 project (contains indextts/ package + checkpoints/)
     indextts_root: str = "F:/index-tts-20/index-tts-20"
+    # Qwen3-TTS — root directory (contains qwen_tts/ package + Qwen3-TTS-12Hz-1.7B-Base/ weights)
+    qwen3_tts_root: str = "F:/Qwen3-TTS"
 
 
 settings = Settings()
