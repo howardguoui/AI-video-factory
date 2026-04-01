@@ -199,17 +199,81 @@ def _get_audio_duration(path: str) -> float:
         raise RuntimeError(f"Could not get audio duration for {path}: {e}") from e
 
 
+def _synthesize_with_indextts(
+    segments: list,
+    ref_audio_path: str,
+    source_audio_path: str,
+    job_id: str,
+    job_dir: Path,
+    progress_callback=None,
+) -> str:
+    """Synthesize dubbed audio using IndexTTS (index-tts-20) voice cloning."""
+    import sys
+    import gc
+    import torch
+
+    indextts_root = str(Path(settings.indextts_root))
+    if indextts_root not in sys.path:
+        sys.path.insert(0, indextts_root)
+
+    # Override HF_HUB_CACHE to absolute path BEFORE the module sets it to relative
+    import os as _os
+    _os.environ["HF_HUB_CACHE"] = str(Path(settings.indextts_root) / "checkpoints" / "hf_cache")
+
+    from indextts.infer import IndexTTS  # type: ignore
+
+    cfg_path = str(Path(settings.indextts_root) / "checkpoints" / "config.yaml")
+    model_dir = str(Path(settings.indextts_root) / "checkpoints")
+
+    logger.info(f"[{job_id}] Loading IndexTTS from {model_dir}")
+    model = IndexTTS(cfg_path=cfg_path, model_dir=model_dir, is_fp16=True)
+
+    try:
+        clips: list[tuple[float, str]] = []
+        total = len(segments)
+        for i, seg in enumerate(segments):
+            start_sec = _srt_time_to_seconds(seg.start)
+            clip_path = str(job_dir / f"clip_{i:04d}.wav")
+            try:
+                model.infer_fast(
+                    audio_prompt=ref_audio_path,
+                    text=seg.text,
+                    output_path=clip_path,
+                )
+                clips.append((start_sec, clip_path))
+            except Exception as seg_err:
+                logger.warning(f"[{job_id}] IndexTTS segment {i + 1} failed ({seg_err}), inserting silence")
+                _make_silence_wav(clip_path, _srt_time_to_seconds(seg.end) - start_sec)
+                clips.append((start_sec, clip_path))
+
+            if progress_callback:
+                progress_callback((i + 1) / total, f"IndexTTS segment {i + 1}/{total}")
+    finally:
+        del model
+        torch.cuda.empty_cache()
+        gc.collect()
+        logger.info(f"[{job_id}] IndexTTS model unloaded")
+
+    dubbed_path = str(job_dir / "dubbed.wav")
+    total_duration = _get_audio_duration(source_audio_path)
+    _assemble_audio_clips(clips, total_duration, dubbed_path, sample_rate=24000)
+    logger.info(f"[{job_id}] IndexTTS assembly complete")
+    return dubbed_path
+
+
 def synthesize_tts(
     translated_srt_path: str,
     source_audio_path: str,
     job_id: str,
     target_lang: str = "zh",
     source_srt_path: str | None = None,
+    tts_engine: str = "qwen3",
+    progress_callback=None,
 ) -> str:
     """
     Synthesize dubbed audio using voice cloning.
-    Falls back through: Qwen3-TTS → CosyVoice2 → STUB.
-    source_srt_path: already-transcribed source SRT used to derive ref_text (no second Whisper load).
+    tts_engine selects the engine: "qwen3" | "indextts" | "cosyvoice2" | "stub"
+    Falls back to stub if the selected engine is unavailable.
     """
     with open(translated_srt_path, encoding="utf-8") as f:
         srt_content = f.read()
@@ -218,26 +282,42 @@ def synthesize_tts(
     if not segments:
         raise ValueError(f"No segments found in {translated_srt_path}")
 
-    if USE_STUB_TTS:
+    if USE_STUB_TTS or tts_engine == "stub":
         return _stub_synthesize_tts(segments, source_audio_path, job_id)
 
-    # --- Real TTS path ---
     job_dir = Path(settings.storage_path) / job_id
     ref_duration = 12.0
     ref_audio_path, ref_start_sec = extract_reference_clip(source_audio_path, job_id, duration=ref_duration)
     srt_for_ref = source_srt_path or translated_srt_path
 
-    # Try Qwen3-TTS
+    if tts_engine == "indextts":
+        try:
+            return _synthesize_with_indextts(
+                segments, ref_audio_path, source_audio_path, job_id, job_dir, progress_callback,
+            )
+        except Exception as e:
+            logger.warning(f"[{job_id}] IndexTTS failed ({e}), falling back to stub")
+            return _stub_synthesize_tts(segments, source_audio_path, job_id)
+
+    if tts_engine == "cosyvoice2":
+        try:
+            from cosyvoice.cli.cosyvoice import CosyVoice2  # type: ignore
+            return _synthesize_with_cosyvoice(segments, ref_audio_path, source_audio_path, job_id, job_dir)
+        except ImportError:
+            logger.warning(f"[{job_id}] CosyVoice2 not available, falling back to stub")
+            return _stub_synthesize_tts(segments, source_audio_path, job_id)
+
+    # Default: qwen3
     try:
         from qwen_tts import Qwen3TTSModel  # type: ignore
         return _synthesize_with_qwen3(
             segments, ref_audio_path, ref_start_sec, ref_duration,
             srt_for_ref, source_audio_path, job_id, job_dir, target_lang,
+            progress_callback=progress_callback,
         )
     except ImportError:
         logger.warning(f"[{job_id}] Qwen3-TTS not available, trying CosyVoice2")
 
-    # Try CosyVoice2
     try:
         from cosyvoice.cli.cosyvoice import CosyVoice2  # type: ignore
         return _synthesize_with_cosyvoice(segments, ref_audio_path, source_audio_path, job_id, job_dir)
@@ -281,6 +361,7 @@ def _synthesize_with_qwen3(
     job_id: str,
     job_dir: Path,
     target_lang: str = "zh",
+    progress_callback=None,
 ) -> str:
     import torch
     import soundfile as sf
@@ -334,6 +415,9 @@ def _synthesize_with_qwen3(
                 logger.warning(f"[{job_id}] Segment {i+1} failed ({seg_err}), inserting silence")
                 _make_silence_wav(clip_path, _srt_time_to_seconds(seg.end) - start_sec)
                 clips.append((start_sec, clip_path))
+
+            if progress_callback:
+                progress_callback((i + 1) / len(segments), f"Qwen3-TTS segment {i + 1}/{len(segments)}")
     finally:
         import gc
         del model

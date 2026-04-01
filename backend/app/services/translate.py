@@ -62,10 +62,10 @@ def rebuild_srt(segments: list[Segment]) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
-def _call_llm(client: OpenAI, system_prompt: str, user_content: str) -> str:
+def _call_llm(client: OpenAI, system_prompt: str, user_content: str, model: str) -> str:
     """Single LLM call, returns raw string content."""
     response = client.chat.completions.create(
-        model=settings.translation_model,
+        model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -92,7 +92,7 @@ def _parse_json_list(raw: str) -> list | None:
             return None
 
 
-def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list[str]:
+def _translate_batch(client: OpenAI, texts: list[str], target_lang: str, model: str) -> list[str]:
     """
     Translate a batch of subtitle texts. If the model returns the wrong item
     count (common with small local models that merge adjacent lines), the batch
@@ -109,14 +109,14 @@ def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list
     )
     user_content = json.dumps(texts, ensure_ascii=False)
 
-    raw = _call_llm(client, system_prompt, user_content)
+    raw = _call_llm(client, system_prompt, user_content, model)
     result = _parse_json_list(raw)
 
     # If malformed JSON, retry once with stricter prompt
     if result is None:
         logger.warning(f"Malformed JSON for batch of {len(texts)}, retrying")
         strict_prompt = system_prompt + " You MUST return valid JSON only — nothing else."
-        raw = _call_llm(client, strict_prompt, user_content)
+        raw = _call_llm(client, strict_prompt, user_content, model)
         result = _parse_json_list(raw)
 
     # Correct count — happy path
@@ -131,8 +131,8 @@ def _translate_batch(client: OpenAI, texts: list[str], target_lang: str) -> list
             f"splitting batch in half and retrying"
         )
         mid = len(texts) // 2
-        left = _translate_batch(client, texts[:mid], target_lang)
-        right = _translate_batch(client, texts[mid:], target_lang)
+        left = _translate_batch(client, texts[:mid], target_lang, model)
+        right = _translate_batch(client, texts[mid:], target_lang, model)
         return left + right
 
     # Single item still failing — use original text as fallback
@@ -165,7 +165,12 @@ def _detect_ollama_model() -> str:
         return f"{configured} (Ollama unreachable — using configured value)"
 
 
-def translate_srt(srt_path: str, target_lang: str) -> str:
+def translate_srt(
+    srt_path: str,
+    target_lang: str,
+    llm_model: str | None = None,
+    progress_callback=None,
+) -> str:
     """Translate an SRT file to target_lang using Ollama. Returns path to translated SRT."""
     job_dir = Path(srt_path).parent
     translated_srt_path = str(job_dir / "translated.srt")
@@ -177,10 +182,11 @@ def translate_srt(srt_path: str, target_lang: str) -> str:
     if not segments:
         raise ValueError(f"No segments parsed from {srt_path}")
 
-    model_info = _detect_ollama_model()
+    model = llm_model or settings.translation_model
+    total_batches = max(1, (len(segments) + BATCH_SIZE - 1) // BATCH_SIZE)
     logger.info(
         f"Translating {len(segments)} segments to {LANGUAGE_NAMES.get(target_lang, target_lang)} "
-        f"in batches of {BATCH_SIZE} | model: {model_info}"
+        f"in {total_batches} batches | model: {model}"
     )
 
     client = OpenAI(
@@ -192,13 +198,31 @@ def translate_srt(srt_path: str, target_lang: str) -> str:
     for i in range(0, len(segments), BATCH_SIZE):
         batch = segments[i : i + BATCH_SIZE]
         texts = [seg.text for seg in batch]
-        logger.info(f"Translating batch {i // BATCH_SIZE + 1}: segments {i + 1}–{i + len(batch)}")
-        translated_texts = _translate_batch(client, texts, target_lang)
+        batch_num = i // BATCH_SIZE + 1
+        logger.info(f"Translating batch {batch_num}/{total_batches}: segments {i + 1}–{i + len(batch)}")
+
+        if progress_callback:
+            progress_callback(i / len(segments), f"Batch {batch_num}/{total_batches}")
+
+        try:
+            translated_texts = _translate_batch(client, texts, target_lang, model)
+        except Exception as e:
+            err = str(e)
+            if "Connection error" in err or "10061" in err or "ConnectError" in err:
+                raise RuntimeError(
+                    f"Cannot reach Ollama at {settings.ollama_base_url}. "
+                    "Make sure Ollama is running: open a terminal and run `ollama serve`, "
+                    f"then ensure model '{model}' is pulled (`ollama pull {model}`)."
+                ) from e
+            raise
 
         for seg, translated_text in zip(batch, translated_texts):
             translated_segments.append(
                 Segment(index=seg.index, start=seg.start, end=seg.end, text=translated_text)
             )
+
+    if progress_callback:
+        progress_callback(1.0, "Translation complete")
 
     srt_content = rebuild_srt(translated_segments)
     with open(translated_srt_path, "w", encoding="utf-8") as f:

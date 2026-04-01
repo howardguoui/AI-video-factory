@@ -19,10 +19,18 @@ def get_job_data(job_id: str) -> dict | None:
     return json.loads(raw) if raw else None
 
 
+def get_all_job_ids() -> list[str]:
+    """Return all job IDs currently stored in Redis."""
+    keys = _redis.keys("job:*")
+    return [k.replace("job:", "") for k in keys]
+
+
 def update_status(
     job_id: str,
-    status: str,
+    status: str | None,
     step: int | None = None,
+    step_progress: float | None = None,
+    step_detail: str | None = None,
     output_path: str | None = None,
     error: str | None = None,
     source_vtt: str | None = None,
@@ -30,9 +38,14 @@ def update_status(
     bilingual_download: str | None = None,
 ) -> None:
     data = get_job_data(job_id) or {}
-    data["status"] = status
+    if status is not None:
+        data["status"] = status
     if step is not None:
         data["step"] = step
+    if step_progress is not None:
+        data["step_progress"] = step_progress
+    if step_detail is not None:
+        data["step_detail"] = step_detail
     if output_path is not None:
         data["output_path"] = output_path
     if error is not None:

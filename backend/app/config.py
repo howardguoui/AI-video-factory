@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # ASR performance tuning
     whisper_beam_size: int = 1          # 1=fastest, 5=most accurate
     asr_chunk_minutes: int = 10         # split audio into N-minute chunks (sequential, VAD per chunk)
+    # IndexTTS — root directory of the index-tts-20 project (contains indextts/ package + checkpoints/)
+    indextts_root: str = "F:/index-tts-20/index-tts-20"
 
 
 settings = Settings()

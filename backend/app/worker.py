@@ -36,7 +36,7 @@ celery_app.conf.task_time_limit = 7500        # 2h5m hard kill
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _safe_update_status(job_id: str, status: str, **kwargs) -> None:
+def _safe_update_status(job_id: str, status: str | None, **kwargs) -> None:
     """
     Wrapper around update_status that never raises.
     A Redis failure here should not mask the real pipeline error.
@@ -45,6 +45,13 @@ def _safe_update_status(job_id: str, status: str, **kwargs) -> None:
         update_status(job_id, status, **kwargs)
     except Exception as e:
         logger.error(f"[{job_id}] Status update to '{status}' failed (Redis?): {e}")
+
+
+def _make_progress_cb(job_id: str):
+    """Return a progress callback that writes step_progress + step_detail to Redis."""
+    def cb(progress: float, detail: str) -> None:
+        _safe_update_status(job_id, None, step_progress=min(progress, 1.0), step_detail=detail)
+    return cb
 
 
 @contextmanager
@@ -101,44 +108,59 @@ def _is_transient(msg: str) -> bool:
     max_retries=2,
     default_retry_delay=30,
 )
-def process_video(self, job_id: str, target_lang: str, pipeline_mode: str = "dubbing") -> dict:
+def process_video(
+    self,
+    job_id: str,
+    target_lang: str,
+    pipeline_mode: str = "dubbing",
+    tts_engine: str = "qwen3",
+    llm_model: str | None = None,
+) -> dict:
     from app.services.mux import extract_audio, mux_video, create_bilingual_download
     from app.services.asr import transcribe
     from app.services.translate import translate_srt
     from app.services.tts import synthesize_tts
 
     attempt = self.request.retries + 1
+    progress_cb = _make_progress_cb(job_id)
     logger.info(
         f"[{job_id}] Pipeline started "
-        f"(lang={target_lang}, mode={pipeline_mode}, attempt={attempt}/{self.max_retries + 1})"
+        f"(lang={target_lang}, mode={pipeline_mode}, tts={tts_engine}, "
+        f"llm={llm_model}, attempt={attempt}/{self.max_retries + 1})"
     )
 
     try:
-        _safe_update_status(job_id, "extracting_audio", step=1)
+        _safe_update_status(job_id, "extracting_audio", step=1, step_progress=0.0, step_detail="Extracting audio track")
         with _step(job_id, "extract_audio"):
             audio_path = extract_audio(job_id)
 
-        _safe_update_status(job_id, "transcribing", step=2)
+        _safe_update_status(job_id, "transcribing", step=2, step_progress=0.0, step_detail="Loading Whisper model...")
         with _step(job_id, "transcribe"):
             srt_path = transcribe(audio_path, job_id)
+        _safe_update_status(job_id, None, step_progress=1.0, step_detail="Transcription complete")
 
-        _safe_update_status(job_id, "translating", step=3)
+        _safe_update_status(job_id, "translating", step=3, step_progress=0.0, step_detail="Starting translation...")
         with _step(job_id, "translate"):
-            translated_srt_path = translate_srt(srt_path, target_lang)
+            translated_srt_path = translate_srt(
+                srt_path, target_lang,
+                llm_model=llm_model,
+                progress_callback=progress_cb,
+            )
 
         if pipeline_mode == "subtitles_only":
-            _safe_update_status(job_id, "muxing", step=4)
+            _safe_update_status(job_id, "muxing", step=4, step_progress=0.0, step_detail="Combining video and subtitles")
             with _step(job_id, "mux_video"):
                 output_video_path, source_vtt, translated_vtt = mux_video(
                     job_id, audio_path, srt_path, translated_srt_path
                 )
 
-            _safe_update_status(job_id, "rendering_downloads", step=5)
+            _safe_update_status(job_id, "rendering_downloads", step=5, step_progress=0.0, step_detail="Rendering bilingual download")
             with _step(job_id, "bilingual_download"):
                 bilingual_dl = create_bilingual_download(job_id, srt_path, translated_srt_path)
 
             _safe_update_status(
                 job_id, "done", step=6,
+                step_progress=1.0, step_detail=None,
                 output_path=output_video_path,
                 source_vtt=source_vtt,
                 translated_vtt=translated_vtt,
@@ -146,25 +168,28 @@ def process_video(self, job_id: str, target_lang: str, pipeline_mode: str = "dub
             )
 
         else:
-            _safe_update_status(job_id, "synthesizing", step=4)
+            _safe_update_status(job_id, "synthesizing", step=4, step_progress=0.0, step_detail="Loading TTS model...")
             with _step(job_id, "synthesize_tts"):
                 dubbed_audio_path = synthesize_tts(
                     translated_srt_path, audio_path, job_id,
                     target_lang, source_srt_path=srt_path,
+                    tts_engine=tts_engine,
+                    progress_callback=progress_cb,
                 )
 
-            _safe_update_status(job_id, "muxing", step=5)
+            _safe_update_status(job_id, "muxing", step=5, step_progress=0.0, step_detail="Combining video and dubbed audio")
             with _step(job_id, "mux_video"):
                 output_video_path, source_vtt, translated_vtt = mux_video(
                     job_id, dubbed_audio_path, srt_path, translated_srt_path
                 )
 
-            _safe_update_status(job_id, "rendering_downloads", step=6)
+            _safe_update_status(job_id, "rendering_downloads", step=6, step_progress=0.0, step_detail="Rendering bilingual download")
             with _step(job_id, "bilingual_download"):
                 bilingual_dl = create_bilingual_download(job_id, srt_path, translated_srt_path)
 
             _safe_update_status(
                 job_id, "done", step=7,
+                step_progress=1.0, step_detail=None,
                 output_path=output_video_path,
                 source_vtt=source_vtt,
                 translated_vtt=translated_vtt,
