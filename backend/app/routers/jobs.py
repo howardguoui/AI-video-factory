@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.models.job import JobResponse
+from app.services.translate import resolve_translation_model
 from app.state import get_all_job_ids, get_job_data, set_job
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ async def create_job(
         label = file.filename or "uploaded file"
         logger.info(f"[{job_id}] Saved upload: {input_path} ({size} bytes)")
 
-    resolved_model = llm_model or settings.translation_model
+    resolved_model = resolve_translation_model(llm_model)
 
     set_job(job_id, {
         "job_id": job_id,

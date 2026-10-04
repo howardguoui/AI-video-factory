@@ -166,6 +166,29 @@ def _detect_ollama_model() -> str:
         return f"{configured} (Ollama unreachable — using configured value)"
 
 
+def resolve_translation_model(requested: str | None = None) -> str:
+    """
+    Pick the model a job should use. Prefers the requested/configured model if
+    Ollama reports it installed; otherwise falls back to the first installed
+    model so a changed default never breaks jobs. Returns the configured name
+    unchanged when Ollama can't be reached (the job will surface that error).
+    """
+    import urllib.request
+
+    wanted = requested or settings.translation_model
+    base = settings.ollama_base_url.rstrip("/").replace("/v1", "")
+    try:
+        with urllib.request.urlopen(f"{base}/api/tags", timeout=3) as resp:
+            installed = [m.get("name", "") for m in json.loads(resp.read()).get("models", [])]
+    except Exception:
+        return wanted
+    if not installed or wanted in installed or wanted.split(":")[0] in {m.split(":")[0] for m in installed}:
+        return wanted
+    logger.warning(f"Translation model '{wanted}' not installed in Ollama; using '{installed[0]}'. "
+                   f"Run `ollama pull {wanted}` to use the configured model.")
+    return installed[0]
+
+
 def translate_text(
     source_txt_path: str,
     target_lang: str,
