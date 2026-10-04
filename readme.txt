@@ -53,16 +53,20 @@ OPENAI_API_KEY=ollama
 REDIS_URL=redis://localhost:6379/0
 STORAGE_PATH=E:/ClaudeProject/AI-video-factory/backend/storage
 
-WHISPER_MODEL_SIZE=large-v3
+# ASR (Speech-to-Text)
+WHISPER_MODEL_SIZE=large-v3          # Options: large-v3, large-v3-turbo (4x faster)
 WHISPER_DEVICE=cuda
-WHISPER_COMPUTE_TYPE=float16
+WHISPER_COMPUTE_TYPE=float16         # Options: int8 (smaller), float16 (better)
 QWEN_DEVICE=cuda
 LOG_LEVEL=INFO
 
 USE_STUB_TTS=false
 
+# Translation (via Ollama)
 OLLAMA_BASE_URL=http://localhost:11434/v1
-TRANSLATION_MODEL=huihui_ai/qwen3-vl-abliterated:8b-instruct
+TRANSLATION_MODEL=qwen3:8b           # Text model (Oct 2026 upgrade)
+                                      # Alternatives: translategemma:12b, aya-expanse:8b
+OLLAMA_KEEP_ALIVE=5m                 # Keep model warm in VRAM (5m, 24h, etc.)
 
 QWEN3_TTS_ROOT=F:/Qwen3-TTS
 INDEXTTS_ROOT=F:/index-tts-20/index-tts-20
@@ -125,6 +129,40 @@ winget install sox.sox
 
 
 ================================================================================
+ MODEL SELECTION (Oct 4, 2026 Upgrade)
+================================================================================
+
+ASR (Audio Transcription):
+  large-v3 (DEFAULT)     — 7.4% WER, balanced speed/accuracy
+  large-v3-turbo         — 7.75% WER, 4× faster (CTranslate2 ONNX optimized)
+
+  Switch: Set WHISPER_MODEL_SIZE=large-v3-turbo in .env
+
+Translation (Text via Ollama):
+  qwen3:8b (DEFAULT)     — 6 GB VRAM, ~112 tok/s, general-purpose
+  translategemma:12b     — 8.1 GB VRAM, 25.9% error reduction, MT-specialized
+  aya-expanse:8b         — 8 GB VRAM, 93-language support, multilingual
+
+  Switch: Set TRANSLATION_MODEL=<model_name> in .env, then:
+    ollama pull <model_name>
+
+  Notes:
+    - Oct 2026 changed from vision model (qwen3-vl) to text models (8–12× faster)
+    - Keep OLLAMA_KEEP_ALIVE set to prevent model reload between jobs
+
+Compute Precision:
+  float16 (DEFAULT)      — 2× smaller than FP32, good accuracy
+  int8                   — 4× smaller than FP32, minor WER impact (~1–3%)
+
+  Use INT8 only if VRAM < 4 GB.
+
+Performance Tuning Guide:
+  Faster:   large-v3-turbo + qwen3:8b + OLLAMA_KEEP_ALIVE=24h
+  Quality:  large-v3 + translategemma:12b + longer keep-alive
+  Balanced: large-v3 + qwen3:8b (current defaults)
+
+
+================================================================================
  TROUBLESHOOTING
 ================================================================================
 
@@ -138,12 +176,20 @@ winget install sox.sox
 
 "Cannot reach Ollama"
   -> Run: ollama serve
-  -> Pull model: ollama pull huihui_ai/qwen3-vl-abliterated:8b-instruct
+  -> Pull translation model: ollama pull qwen3:8b
+  -> Or custom model: ollama pull translategemma:12b
+
+"Translation very slow (first request ~30s, then fast)"
+  -> Model cold-start. Increase OLLAMA_KEEP_ALIVE in .env to keep warm.
+  -> Default 5m = unloads from VRAM after 5 min inactivity.
+  -> Set to "24h" for 16 GB GPU to pin model all day.
 
 "Celery worker crashes mid-job"
   -> Always use -P solo. Forked workers crash the CUDA context.
 
-"Job stuck on translating"
-  -> Check Ollama is running: ollama list
+"Job stuck on transcribing"
+  -> Check GPU memory: nvidia-smi
+  -> Reduce ASR_CHUNK_MINUTES (e.g., 5 min chunks instead of 10) to lower peak VRAM
+  -> Or switch to smaller model (Qwen3-ASR 1.7B for Mandarin-only)
 
 ================================================================================

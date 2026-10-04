@@ -71,6 +71,7 @@ def _call_llm(client: OpenAI, system_prompt: str, user_content: str, model: str)
             {"role": "user", "content": user_content},
         ],
         temperature=0.3,
+        extra_body={"keep_alive": settings.ollama_keep_alive} if "ollama" in settings.ollama_base_url else {},
     )
     return response.choices[0].message.content.strip()
 
