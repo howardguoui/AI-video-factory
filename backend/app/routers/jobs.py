@@ -27,6 +27,8 @@ async def create_job(
 ):
     if file is None and not source_url:
         raise HTTPException(status_code=400, detail="Either file or source_url must be provided")
+    if source_url and not source_url.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="source_url must start with http:// or https://")
 
     job_id = str(uuid4())
     job_dir = Path(settings.storage_path) / job_id
@@ -36,11 +38,14 @@ async def create_job(
     label = source_url or ""
     if file:
         input_path = str(job_dir / "input.mp4")
-        content = await file.read()
+        # Stream to disk in chunks — a multi-GB upload must not be held in RAM.
+        size = 0
         with open(input_path, "wb") as f:
-            f.write(content)
+            while chunk := await file.read(8 * 1024 * 1024):
+                f.write(chunk)
+                size += len(chunk)
         label = file.filename or "uploaded file"
-        logger.info(f"[{job_id}] Saved upload: {input_path} ({len(content)} bytes)")
+        logger.info(f"[{job_id}] Saved upload: {input_path} ({size} bytes)")
 
     resolved_model = llm_model or settings.translation_model
 
@@ -95,7 +100,11 @@ async def cleanup_jobs():
 async def get_file(job_id: str, filename: str):
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    file_path = Path(settings.storage_path) / job_id / filename
+    storage_root = Path(settings.storage_path).resolve()
+    file_path = (storage_root / job_id / filename).resolve()
+    # job_id is a path segment too — keep the result inside the storage root.
+    if file_path.parent.parent != storage_root:
+        raise HTTPException(status_code=400, detail="Invalid job id")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(str(file_path))
