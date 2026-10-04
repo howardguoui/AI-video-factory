@@ -91,8 +91,8 @@
 ## Part 3: Architecture & Code Review (15 Findings)
 
 ### Critical Findings
-1. **services/translate.py:74** — `keep_alive` parameter uses Ollama-specific check; will silently fail with other OpenAI-compatible APIs (e.g., vLLM, Text Generation WebUI). Add explicit provider config.
-2. **routers/jobs.py:102–103** — Path traversal check is incomplete; encoded dots (`%2e%2e`) bypass filter. Use `Path.resolve()` consistently (already done in lines 104–107, but add symlink check).
+1. ~~**services/translate.py:74** — keep_alive provider detection~~ — *Corrected 2026-10-04 (verified by hand): keep_alive is only sent when `ollama_base_url` contains "ollama"; other OpenAI-compatible servers get no extra body. Low priority at most (an explicit `llm_provider` setting would be cleaner).*
+2. ~~**routers/jobs.py:102–103** — path traversal incomplete~~ — *Corrected 2026-10-04: not a bug. The path is `resolve()`d and must sit exactly one level under the storage root (commit 2b2febd); encoded `..` in job_id or filename was tested and returns 400/404. Symlinks inside storage are not created by the app.*
 3. **worker.py:80–87** — `_free_gpu()` calls `torch.cuda.synchronize()` after `empty_cache()`; order should reverse (sync first, then empty). Minor but correct safety order.
 4. **services/mux.py:12** — String replacement `.replace(".srt", ".vtt")` breaks if filename is `mytranslated.srt.srt`. Use `Path.with_suffix()` instead.
 
@@ -118,7 +118,7 @@
 ## Prioritized Action List
 
 ### Quick Wins (< 1h each)
-- Fix translate.py:74 keep_alive API provider detection
+- ~~Fix translate.py:74 keep_alive API provider detection~~ (not needed — see correction above)
 - Replace mux.py:12 string replace with Path.with_suffix()
 - Add yt-dlp timeout (120s) in download.py
 - Add validation in config.py for model root directories
