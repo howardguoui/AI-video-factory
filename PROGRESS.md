@@ -17,7 +17,7 @@
 - [x] Synced REQUIREMENTS.md checkboxes with the code.
 
 **Open:**
-- [ ] `frontend/` is a nested git repo (gitlink, no `.gitmodules`, no remote), so GitHub has no frontend code. Decide: fold into this repo, or give it its own remote. Its WIP (URL/webpage input, MP3/subtitle modes, `ChatBubble.tsx`) is uncommitted.
+- [x] `frontend/` folded into this repo (2026-10-04, `b25f4a6`); old nested history in `.frontend-git-backup/`.
 - [ ] Remaining frontend lint: `RecentJobs.tsx` setState-in-effect error, 2 hook-deps warnings.
 - [ ] End-to-end GPU run of the new modes (mp3_only, subtitles_export, webpage) not yet exercised.
 
@@ -43,12 +43,12 @@
 | Lip-sync | Defer to Phase 3 | MVP ships without it |
 
 **Next Steps:**
-- [ ] Scaffold Next.js frontend project
-- [ ] Scaffold FastAPI backend project
-- [ ] Install and test faster-whisper on local GPU
-- [ ] Install and test Qwen3-TTS on local GPU
-- [ ] Build video upload UI component
-- [ ] Wire ASR stage end-to-end
+- [x] Scaffold Next.js frontend project
+- [x] Scaffold FastAPI backend project
+- [x] Install and test faster-whisper on local GPU
+- [x] Install and test Qwen3-TTS on local GPU
+- [x] Build video upload UI component
+- [x] Wire ASR stage end-to-end
 
 ---
 
