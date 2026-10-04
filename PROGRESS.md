@@ -4,11 +4,22 @@
 
 ---
 
-## Current Status: PLANNING
+## Current Status: MVP COMPLETE — maintenance / portfolio (see `E:\ClaudeProject\plans\2026-10-03-next-projects.md`)
 
 ---
 
 ## Session Log
+
+### Session — 2026-10-04
+**Completed:**
+- [x] Verified + committed uncommitted backend work (`5ce718a`): yt-dlp URL download, webpage-text translation, MP3-only and subtitle-export modes, `/api/chat` assistant. Backend compiles and imports; deps installed.
+- [x] Frontend: fixed 2 `prefer-const` lint errors (5 → 3 problems); `tsc --noEmit` passes. Changes are **uncommitted** — see open item below.
+- [x] Synced REQUIREMENTS.md checkboxes with the code.
+
+**Open:**
+- [ ] `frontend/` is a nested git repo (gitlink, no `.gitmodules`, no remote), so GitHub has no frontend code. Decide: fold into this repo, or give it its own remote. Its WIP (URL/webpage input, MP3/subtitle modes, `ChatBubble.tsx`) is uncommitted.
+- [ ] Remaining frontend lint: `RecentJobs.tsx` setState-in-effect error, 2 hook-deps warnings.
+- [ ] End-to-end GPU run of the new modes (mp3_only, subtitles_export, webpage) not yet exercised.
 
 ### Session 1 — 2026-03-28
 **Completed:**

@@ -104,21 +104,21 @@ Full pipeline VRAM estimate:
 ## 6. Build Phases
 
 ### Phase 1 — MVP (Dubbing + Subtitles)
-- [ ] Project scaffold (Next.js + FastAPI)
-- [ ] Video upload UI + YouTube URL input
-- [ ] faster-whisper integration (ASR)
-- [ ] GPT-4o translation integration
-- [ ] Qwen3-TTS voice cloning integration
-- [ ] FFmpeg mux: replace audio track in video
-- [ ] Subtitle burn-in or SRT export
-- [ ] Job queue (Celery + Redis) for background processing
-- [ ] Progress status UI (Transcribing → Translating → Dubbing → Done)
-- [ ] Download / playback result
+- [x] Project scaffold (Next.js + FastAPI)
+- [x] Video upload UI + YouTube URL input
+- [x] faster-whisper integration (ASR)
+- [x] Translation integration — implemented with local Ollama (OpenAI-compatible client) instead of GPT-4o
+- [x] Qwen3-TTS voice cloning integration (plus IndexTTS / CosyVoice2 engine selector)
+- [x] FFmpeg mux: replace audio track in video
+- [x] Subtitle burn-in or SRT export (bilingual libass burn, VTT/SRT export mode)
+- [x] Job queue (Celery + Redis) for background processing
+- [x] Progress status UI (Transcribing → Translating → Dubbing → Done)
+- [x] Download / playback result
 
 ### Phase 2 — Refinement
 - [ ] Speaker diarization (multiple speakers → separate voice clones)
 - [ ] Demucs audio separation (preserve background music, replace vocals only)
-- [ ] YouTube URL input via yt-dlp
+- [x] YouTube URL input via yt-dlp (any yt-dlp URL; plus webpage-text translation mode)
 - [ ] Email auth / user accounts
 
 ### Phase 3 — Production
