@@ -26,7 +26,7 @@ API runs at: http://localhost:8000
 
 PURGE CELERY QUEUE (if jobs get stuck):
    .\venv\Scripts\python.exe -m celery -A app.worker purge
-
+Restart the Network ServiceSometimes simply restarting the service that manages these reservations can clear the temporary block without a full reboot.Run the following commands in an Admin terminal:net stop hns (Host Network Service)net start hns
 
 ================================================================================
  F-DRIVE MODEL PATHS  (models stored on F:/, NOT in the project folder)

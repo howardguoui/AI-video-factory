@@ -185,6 +185,28 @@ def create_bilingual_download(
     return dl_path
 
 
+def export_mp3(job_id: str, dubbed_audio_path: str) -> str:
+    """Convert dubbed WAV to MP3 for audio-only export."""
+    job_dir = Path(settings.storage_path) / job_id
+    output_path = str(job_dir / "output.mp3")
+
+    logger.info(f"[{job_id}] Exporting MP3 from {dubbed_audio_path}")
+    try:
+        (
+            ffmpeg
+            .input(dubbed_audio_path)
+            .output(output_path, acodec="libmp3lame", audio_bitrate="192k")
+            .overwrite_output()
+            .run(quiet=True)
+        )
+    except ffmpeg.Error as e:
+        stderr = e.stderr.decode() if e.stderr else "unknown error"
+        raise RuntimeError(f"FFmpeg MP3 export failed: {stderr}") from e
+
+    logger.info(f"[{job_id}] MP3 export complete: {output_path}")
+    return output_path
+
+
 def get_video_duration(path: str) -> float:
     """Get duration of a video/audio file in seconds using ffprobe."""
     try:

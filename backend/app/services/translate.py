@@ -165,6 +165,65 @@ def _detect_ollama_model() -> str:
         return f"{configured} (Ollama unreachable — using configured value)"
 
 
+def translate_text(
+    source_txt_path: str,
+    target_lang: str,
+    llm_model: str | None = None,
+    progress_callback=None,
+) -> str:
+    """
+    Translate a plain-text file (e.g. extracted from a webpage) to target_lang.
+    Splits on double-newlines (paragraphs), translates in batches, and writes
+    the result to translated.txt alongside the source file.
+    Returns the path to translated.txt.
+    """
+    job_dir = Path(source_txt_path).parent
+    translated_path = str(job_dir / "translated.txt")
+
+    with open(source_txt_path, encoding="utf-8") as f:
+        text = f.read()
+
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        raise ValueError(f"No text content found in {source_txt_path}")
+
+    model = llm_model or settings.translation_model
+    total_batches = max(1, (len(paragraphs) + BATCH_SIZE - 1) // BATCH_SIZE)
+    logger.info(
+        f"Translating {len(paragraphs)} paragraphs to "
+        f"{LANGUAGE_NAMES.get(target_lang, target_lang)} "
+        f"in {total_batches} batches | model: {model}"
+    )
+
+    client = OpenAI(api_key=settings.openai_api_key, base_url=settings.ollama_base_url)
+    translated_parts: list[str] = []
+
+    for i in range(0, len(paragraphs), BATCH_SIZE):
+        batch = paragraphs[i : i + BATCH_SIZE]
+        batch_num = i // BATCH_SIZE + 1
+        if progress_callback:
+            progress_callback(i / len(paragraphs), f"Batch {batch_num}/{total_batches}")
+        try:
+            translated_parts.extend(_translate_batch(client, batch, target_lang, model))
+        except Exception as e:
+            err = str(e)
+            if "Connection error" in err or "10061" in err or "ConnectError" in err:
+                raise RuntimeError(
+                    f"Cannot reach Ollama at {settings.ollama_base_url}. "
+                    "Make sure Ollama is running and the model is pulled."
+                ) from e
+            raise
+
+    if progress_callback:
+        progress_callback(1.0, "Translation complete")
+
+    with open(translated_path, "w", encoding="utf-8") as f:
+        f.write("\n\n".join(translated_parts))
+
+    logger.info(f"Translated text written: {translated_path}")
+    return translated_path
+
+
 def translate_srt(
     srt_path: str,
     target_lang: str,

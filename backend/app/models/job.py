@@ -17,3 +17,4 @@ class JobResponse(BaseModel):
     source_vtt: str | None = None
     translated_vtt: str | None = None
     bilingual_download: str | None = None
+    source_url: str | None = None

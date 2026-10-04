@@ -116,10 +116,11 @@ def process_video(
     tts_engine: str = "qwen3",
     llm_model: str | None = None,
 ) -> dict:
-    from app.services.mux import extract_audio, mux_video, create_bilingual_download
+    from app.services.mux import extract_audio, mux_video, create_bilingual_download, export_mp3, srt_to_vtt
     from app.services.asr import transcribe
-    from app.services.translate import translate_srt
+    from app.services.translate import translate_srt, translate_text
     from app.services.tts import synthesize_tts
+    from app.services.download import download_video, extract_webpage_text
 
     attempt = self.request.retries + 1
     progress_cb = _make_progress_cb(job_id)
@@ -130,6 +131,35 @@ def process_video(
     )
 
     try:
+        job_data = get_job_data(job_id) or {}
+        source_url = job_data.get("source_url")
+
+        # ---- WEBPAGE PIPELINE ------------------------------------------------
+        if pipeline_mode == "webpage":
+            _safe_update_status(job_id, "downloading", step=1, step_progress=0.0, step_detail="Fetching webpage content...")
+            with _step(job_id, "extract_webpage"):
+                source_txt = extract_webpage_text(job_id, source_url)
+
+            _safe_update_status(job_id, "translating", step=2, step_progress=0.0, step_detail="Starting translation...")
+            with _step(job_id, "translate_text"):
+                translated_txt = translate_text(
+                    source_txt, target_lang,
+                    llm_model=llm_model,
+                    progress_callback=progress_cb,
+                )
+
+            _safe_update_status(job_id, "done", step=3, step_progress=1.0, step_detail=None, output_path=translated_txt)
+            logger.info(f"[{job_id}] Pipeline complete")
+            return {"job_id": job_id, "status": "done", "output_path": translated_txt}
+
+        # ---- VIDEO PIPELINE --------------------------------------------------
+
+        # Optional first step: download from URL (YouTube, Bilibili, etc.)
+        if source_url:
+            _safe_update_status(job_id, "downloading", step=1, step_progress=0.0, step_detail="Downloading video...")
+            with _step(job_id, "download_video"):
+                download_video(job_id, source_url)
+
         _safe_update_status(job_id, "extracting_audio", step=1, step_progress=0.0, step_detail="Extracting audio track")
         with _step(job_id, "extract_audio"):
             audio_path = extract_audio(job_id)
@@ -166,8 +196,44 @@ def process_video(
                 translated_vtt=translated_vtt,
                 bilingual_download=bilingual_dl,
             )
+            result_output = output_video_path
 
-        else:
+        elif pipeline_mode == "mp3_only":
+            _safe_update_status(job_id, "synthesizing", step=4, step_progress=0.0, step_detail="Loading TTS model...")
+            with _step(job_id, "synthesize_tts"):
+                dubbed_audio_path = synthesize_tts(
+                    translated_srt_path, audio_path, job_id,
+                    target_lang, source_srt_path=srt_path,
+                    tts_engine=tts_engine,
+                    progress_callback=progress_cb,
+                )
+
+            _safe_update_status(job_id, "exporting_mp3", step=5, step_progress=0.0, step_detail="Encoding MP3...")
+            with _step(job_id, "export_mp3"):
+                mp3_path = export_mp3(job_id, dubbed_audio_path)
+
+            _safe_update_status(
+                job_id, "done", step=6,
+                step_progress=1.0, step_detail=None,
+                output_path=mp3_path,
+            )
+            result_output = mp3_path
+
+        elif pipeline_mode == "subtitles_export":
+            _safe_update_status(job_id, "exporting_subtitles", step=4, step_progress=0.0, step_detail="Converting subtitles...")
+            with _step(job_id, "export_subtitles"):
+                source_vtt = srt_to_vtt(srt_path)
+                translated_vtt = srt_to_vtt(translated_srt_path)
+
+            _safe_update_status(
+                job_id, "done", step=5,
+                step_progress=1.0, step_detail=None,
+                source_vtt=source_vtt,
+                translated_vtt=translated_vtt,
+            )
+            result_output = translated_srt_path
+
+        else:  # "dubbing" (default)
             _safe_update_status(job_id, "synthesizing", step=4, step_progress=0.0, step_detail="Loading TTS model...")
             with _step(job_id, "synthesize_tts"):
                 dubbed_audio_path = synthesize_tts(
@@ -195,9 +261,10 @@ def process_video(
                 translated_vtt=translated_vtt,
                 bilingual_download=bilingual_dl,
             )
+            result_output = output_video_path
 
         logger.info(f"[{job_id}] Pipeline complete")
-        return {"job_id": job_id, "status": "done", "output_path": output_video_path}
+        return {"job_id": job_id, "status": "done", "output_path": result_output}
 
     except SoftTimeLimitExceeded:
         limit = celery_app.conf.task_soft_time_limit

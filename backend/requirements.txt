@@ -9,3 +9,5 @@ openai
 moviepy
 ffmpeg-python
 torch
+yt-dlp
+trafilatura

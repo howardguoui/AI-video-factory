@@ -19,21 +19,21 @@ router = APIRouter()
 @router.post("/jobs", status_code=202)
 async def create_job(
     file: UploadFile | None = File(default=None),
-    youtube_url: str | None = Form(default=None),
+    source_url: str | None = Form(default=None),
     target_lang: str = Form(default="zh"),
     pipeline_mode: str = Form(default="dubbing"),
     tts_engine: str = Form(default="qwen3"),
     llm_model: str | None = Form(default=None),
 ):
-    if file is None and not youtube_url:
-        raise HTTPException(status_code=400, detail="Either file or youtube_url must be provided")
+    if file is None and not source_url:
+        raise HTTPException(status_code=400, detail="Either file or source_url must be provided")
 
     job_id = str(uuid4())
     job_dir = Path(settings.storage_path) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
     input_path = None
-    label = youtube_url or ""
+    label = source_url or ""
     if file:
         input_path = str(job_dir / "input.mp4")
         content = await file.read()
@@ -56,7 +56,7 @@ async def create_job(
         "llm_model": resolved_model,
         "label": label,
         "input_path": input_path,
-        "youtube_url": youtube_url,
+        "source_url": source_url,
         "output_path": None,
         "error": None,
     })
