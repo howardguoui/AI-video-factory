@@ -18,6 +18,7 @@
   - `JobStatus.tsx`: removed unused `isFuture`.
 - [x] Celery: late acknowledgement + re-queue on worker loss (the shutdown handler assumed these but they were never configured), one GPU job per worker, Redis visibility timeout above the hard time limit.
 - [x] CI (GitHub Actions): backend tests; frontend eslint, tsc, webpack build. ROADMAP.md added.
+- [x] First real quality benchmark on the RTX 5070 Ti (zh→en, 50 FLEURS clips). Fixed the run exiting with an error on Windows after the results were written: printing the report to a cp1252 console failed on '→'. `quality_eval.echo` now falls back to replacement characters; test added.
 - [x] Quality evaluation (`backend/evals/quality_eval.py`) on Google FLEURS: ASR error rate (CER for zh/ja/ko, WER otherwise) and real-time factor per Whisper model; translation chrF++ and BLEU per LLM using the app's own `_translate_batch`; full speech→translation cascade score. 6 unit tests in `backend/tests/test_quality_eval.py`.
 
 **Open:**

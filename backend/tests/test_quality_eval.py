@@ -73,3 +73,13 @@ def test_report_is_written(tmp_path, monkeypatch):
     assert "| large-v3-turbo | 8.1% | 22.4× real time | 8.3 min |" in md
     assert "| qwen3:8b | 51.2 | 22.1 | 3.4 | 0 |" in md
     assert json.loads((tmp_path / "latest.json").read_text())["n_clips"] == 2
+
+
+def test_echo_survives_a_console_without_unicode():
+    import io
+
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1252")  # a redirected Windows console
+    qe.echo("zh → en: chrF++ 52.3", stream)
+    stream.flush()
+    assert raw.getvalue().decode("cp1252") == "zh ? en: chrF++ 52.3\n"

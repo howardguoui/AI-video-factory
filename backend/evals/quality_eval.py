@@ -25,6 +25,7 @@ import argparse
 import json
 import re
 import statistics
+import sys
 import tarfile
 import time
 import unicodedata
@@ -300,8 +301,19 @@ def main(argv: list[str] | None = None) -> Report:
         rep.cascade = {"asr_model": best, "mt_model": a.mt_models[0], **translation_scores(hyps, refs, a.tgt),
                        "reference_chrf_pp": rep.mt[a.mt_models[0]]["chrf_pp"]}
 
-    print(write_report(rep).read_text(encoding="utf-8"))
+    echo(write_report(rep).read_text(encoding="utf-8"))
     return rep
+
+
+def echo(text: str, stream=None) -> None:
+    """Print the report even where the console can't encode it (Windows cp1252 has no '→'):
+    the files are already written by then, so a console quirk must not fail the run."""
+    stream = stream or sys.stdout
+    try:
+        stream.write(text + "\n")
+    except UnicodeEncodeError:
+        enc = stream.encoding or "ascii"
+        stream.write(text.encode(enc, errors="replace").decode(enc) + "\n")
 
 
 if __name__ == "__main__":
