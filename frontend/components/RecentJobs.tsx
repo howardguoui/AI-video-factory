@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { getJobHistory, type JobHistoryEntry, updateJobStatus, removeJobFromHistory, clearJobHistory } from "@/lib/jobHistory";
+import {
+  getJobHistory,
+  getJobHistorySnapshot,
+  getServerJobHistorySnapshot,
+  subscribeJobHistory,
+  updateJobStatus,
+  removeJobFromHistory,
+  clearJobHistory,
+} from "@/lib/jobHistory";
 import { getJob } from "@/lib/api";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -45,24 +53,26 @@ interface RecentJobsProps {
 }
 
 export function RecentJobs({ onSelect }: RecentJobsProps = {}) {
-  const [jobs, setJobs] = useState<JobHistoryEntry[]>([]);
+  // Read straight from localStorage via an external store: no setState in an
+  // effect, no hydration mismatch (server snapshot is empty), and every
+  // RecentJobs instance updates when any of them (or another tab) writes.
+  const jobs = useSyncExternalStore(
+    subscribeJobHistory,
+    getJobHistorySnapshot,
+    getServerJobHistorySnapshot
+  );
 
+  // Poll the backend for jobs still in progress; updateJobStatus notifies the store.
   useEffect(() => {
-    setJobs(getJobHistory());
-
     const interval = setInterval(() => {
-      const current = getJobHistory();
-      const active = current.filter(
+      const active = getJobHistory().filter(
         (e) => e.status !== "done" && e.status !== "failed"
       );
-      if (active.length === 0) return;
-      Promise.all(
-        active.map((entry) =>
-          getJob(entry.id)
-            .then((data) => updateJobStatus(entry.id, data.status))
-            .catch(() => {})
-        )
-      ).then(() => setJobs(getJobHistory()));
+      active.forEach((entry) => {
+        getJob(entry.id)
+          .then((data) => updateJobStatus(entry.id, data.status))
+          .catch(() => {});
+      });
     }, 2000);
 
     return () => clearInterval(interval);
@@ -72,12 +82,10 @@ export function RecentJobs({ onSelect }: RecentJobsProps = {}) {
     e.preventDefault();
     e.stopPropagation();
     removeJobFromHistory(id);
-    setJobs(getJobHistory());
   }
 
   function handleClearAll() {
     clearJobHistory();
-    setJobs([]);
   }
 
   if (jobs.length === 0) return null;

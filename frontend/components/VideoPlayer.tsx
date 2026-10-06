@@ -57,24 +57,38 @@ export function VideoPlayer({ src, subtitles = [] }: VideoPlayerProps) {
   const [originalCues, setOriginalCues] = useState<Cue[]>([]);
   const [translationCues, setTranslationCues] = useState<Cue[]>([]);
 
-  const originalTrack = subtitles.find((s) => s.srcLang === "orig");
-  const translationTrack = subtitles.find((s) => s.srcLang !== "orig");
+  const originalSrc = subtitles.find((s) => s.srcLang === "orig")?.src;
+  const translationSrc = subtitles.find((s) => s.srcLang !== "orig")?.src;
 
-  // Fetch and parse VTT files
+  // Fetch and parse VTT files. Each track has its own effect, and a cancelled
+  // flag drops responses that arrive after the source changed or unmounted.
   useEffect(() => {
-    if (originalTrack) {
-      fetch(originalTrack.src)
-        .then((r) => r.text())
-        .then((t) => setOriginalCues(parseVtt(t)))
-        .catch(() => {});
-    }
-    if (translationTrack) {
-      fetch(translationTrack.src)
-        .then((r) => r.text())
-        .then((t) => setTranslationCues(parseVtt(t)))
-        .catch(() => {});
-    }
-  }, [originalTrack?.src, translationTrack?.src]);
+    if (!originalSrc) return;
+    let cancelled = false;
+    fetch(originalSrc)
+      .then((r) => r.text())
+      .then((t) => {
+        if (!cancelled) setOriginalCues(parseVtt(t));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [originalSrc]);
+
+  useEffect(() => {
+    if (!translationSrc) return;
+    let cancelled = false;
+    fetch(translationSrc)
+      .then((r) => r.text())
+      .then((t) => {
+        if (!cancelled) setTranslationCues(parseVtt(t));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [translationSrc]);
 
   useEffect(() => {
     const video = videoRef.current;

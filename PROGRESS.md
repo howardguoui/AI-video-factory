@@ -10,6 +10,17 @@
 
 ## Session Log
 
+### Session — 2026-10-06
+**Completed:**
+- [x] Frontend lint clean (`eslint .` → 0 problems; was 1 error + 2 warnings). `tsc --noEmit` passes; `next build --webpack` passes.
+  - `RecentJobs.tsx`: reads job history with `useSyncExternalStore` instead of `setState` in an effect. `lib/jobHistory.ts` now notifies subscribers on every write and listens for cross-tab `storage` events, so the Navbar and home-page lists stay in sync without remounting.
+  - `VideoPlayer.tsx`: one effect per subtitle track keyed on its URL, with a cancel guard so a late response can't overwrite newer cues.
+  - `JobStatus.tsx`: removed unused `isFuture`.
+
+**Open:**
+- [ ] End-to-end GPU run of the new modes (mp3_only, subtitles_export, webpage) not yet exercised — needs the local RTX machine.
+- [ ] `app/page.tsx` still bumps a `key` to remount `RecentJobs` after upload; no longer needed now that the store notifies, safe to remove after a manual check.
+
 ### Session — 2026-10-04
 **Completed:**
 - [x] Verified + committed uncommitted backend work (`5ce718a`): yt-dlp URL download, webpage-text translation, MP3-only and subtitle-export modes, `/api/chat` assistant. Backend compiles and imports; deps installed.
@@ -18,7 +29,7 @@
 
 **Open:**
 - [x] `frontend/` folded into this repo (2026-10-04, `b25f4a6`); old nested history in `.frontend-git-backup/`.
-- [ ] Remaining frontend lint: `RecentJobs.tsx` setState-in-effect error, 2 hook-deps warnings.
+- [x] Remaining frontend lint: `RecentJobs.tsx` setState-in-effect error, 2 hook-deps warnings. (fixed 2026-10-06)
 - [ ] End-to-end GPU run of the new modes (mp3_only, subtitles_export, webpage) not yet exercised.
 
 ### Session 1 — 2026-03-28

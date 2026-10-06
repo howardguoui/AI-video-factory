@@ -55,7 +55,6 @@ export function JobStatus({ status, pipeline_mode, source_url, step_progress = 0
           {steps.map((step, idx) => {
             const isCompleted = isDone ? idx < steps.length : idx < currentIndex;
             const isActive = !isDone && idx === currentIndex;
-            const isFuture = !isDone && idx > currentIndex;
 
             return (
               <li key={step.key}>
