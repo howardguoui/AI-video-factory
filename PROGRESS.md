@@ -16,12 +16,13 @@
   - `RecentJobs.tsx`: reads job history with `useSyncExternalStore` instead of `setState` in an effect. `lib/jobHistory.ts` now notifies subscribers on every write and listens for cross-tab `storage` events, so the Navbar and home-page lists stay in sync without remounting.
   - `VideoPlayer.tsx`: one effect per subtitle track keyed on its URL, with a cancel guard so a late response can't overwrite newer cues.
   - `JobStatus.tsx`: removed unused `isFuture`.
+- [x] Celery: late acknowledgement + re-queue on worker loss (the shutdown handler assumed these but they were never configured), one GPU job per worker, Redis visibility timeout above the hard time limit.
+- [x] CI (GitHub Actions): backend tests; frontend eslint, tsc, webpack build. ROADMAP.md added.
 - [x] Quality evaluation (`backend/evals/quality_eval.py`) on Google FLEURS: ASR error rate (CER for zh/ja/ko, WER otherwise) and real-time factor per Whisper model; translation chrF++ and BLEU per LLM using the app's own `_translate_batch`; full speech→translation cascade score. 6 unit tests in `backend/tests/test_quality_eval.py`.
 
 **Open:**
 - [ ] **Run the quality eval on the RTX machine** to get measured numbers (the figures in `docs/reviews/2026-10-04-model-upgrade.md` are estimates, not runs):
-      `cd backend && pip install -r evals/requirements.txt && python -m evals.quality_eval --src zh --tgt en --limit 50`
-      Results land in `backend/evals/results/latest.md`; commit them.
+      `.\backend\scripts\publish_results.ps1` runs it and pushes `backend/evals/results/` to GitHub.
 - [ ] End-to-end GPU run of the new modes (mp3_only, subtitles_export, webpage) not yet exercised — needs the local RTX machine.
 - [ ] `app/page.tsx` still bumps a `key` to remount `RecentJobs` after upload; no longer needed now that the store notifies, safe to remove after a manual check.
 
