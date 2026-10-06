@@ -27,3 +27,6 @@ backend/requirements_freeze.txt
 backend/requirements_no_torch.txt
 # Backup of the former nested frontend repo history (pre-fold, 2026-10-04)
 .frontend-git-backup/
+
+# Eval data cache (FLEURS audio)
+backend/evals/.cache/

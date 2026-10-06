@@ -1,0 +1,5 @@
+# Extra packages for evals/quality_eval.py (the backend's requirements.txt covers the rest)
+jiwer>=3.0
+sacrebleu>=2.4
+opencc-python-reimplemented>=0.1.7  # folds Traditional -> Simplified before scoring Chinese
+pytest>=8.0
