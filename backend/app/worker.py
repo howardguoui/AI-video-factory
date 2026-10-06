@@ -31,6 +31,15 @@ celery_app.conf.accept_content = ["json"]
 celery_app.conf.task_soft_time_limit = 7200   # 2 hours
 celery_app.conf.task_time_limit = 7500        # 2h5m hard kill
 
+# One GPU job at a time, and a job is only acknowledged once it finishes, so a
+# worker killed mid-job (SIGKILL, power loss) leaves it in the queue to re-run.
+celery_app.conf.task_acks_late = True
+celery_app.conf.task_reject_on_worker_lost = True
+celery_app.conf.worker_prefetch_multiplier = 1
+# Redis re-delivers an unacknowledged task after visibility_timeout; keep it
+# above the hard time limit or a long job would start a second time.
+celery_app.conf.broker_transport_options = {"visibility_timeout": 3 * 3600}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
