@@ -1,0 +1,44 @@
+{
+  "src": "zh",
+  "tgt": "en",
+  "split": "test",
+  "n_clips": 50,
+  "run_at": "2026-10-06 22:24 UTC",
+  "asr": {
+    "large-v3": {
+      "cer": 0.0903,
+      "rtf": 0.205,
+      "x_realtime": 4.9,
+      "audio_minutes": 9.6,
+      "model_load_s": 6.7,
+      "compute_type": "float16",
+      "beam_size": 1
+    },
+    "large-v3-turbo": {
+      "cer": 0.0908,
+      "rtf": 0.0585,
+      "x_realtime": 17.1,
+      "audio_minutes": 9.6,
+      "model_load_s": 3.5,
+      "compute_type": "float16",
+      "beam_size": 1
+    }
+  },
+  "mt": {
+    "qwen3:8b": {
+      "chrf_pp": 52.33,
+      "bleu": 24.47,
+      "segments": 50,
+      "seconds": 161.4,
+      "segments_per_s": 0.31,
+      "untranslated": 0
+    }
+  },
+  "cascade": {
+    "asr_model": "large-v3",
+    "mt_model": "qwen3:8b",
+    "chrf_pp": 49.73,
+    "bleu": 20.45,
+    "reference_chrf_pp": 52.33
+  }
+}
