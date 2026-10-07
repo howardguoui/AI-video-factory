@@ -11,8 +11,6 @@ Day-to-day session notes stay in PROGRESS.md.
       the estimated figures in `docs/reviews/2026-10-04-model-upgrade.md` with measured ones.
 - [ ] **End-to-end GPU run of every mode** (dub, mp3_only, subtitles_export, webpage) with per-stage timings
       recorded per job, so speed-ups are measured, not estimated.
-- [ ] **Backend unit tests without a GPU:** error classification (CUDA OOM vs transient), SRT helpers, translation
-      batching and retry against a fake OpenAI-compatible server.
 - [ ] **Per-stage VRAM telemetry:** sample NVML during each stage and store peak VRAM per stage on the job, shown
       on the job page; proves the four stages fit in 16 GB and shows the headroom.
 - [ ] **Context-aware translation:** pass the previous segments as context to the LLM and measure the chrF++ change
@@ -25,6 +23,9 @@ Day-to-day session notes stay in PROGRESS.md.
 
 ## Shipped
 
+- 2026-10-07: Backend unit tests without a GPU: error classification (CUDA OOM vs transient), SRT helpers,
+  translation batching and retry against a fake OpenAI-compatible server. Fixed SRT timestamps that rounded to
+  ":60" seconds, and Ollama connection drops that were never retried.
 - 2026-10-06: CI for backend tests and frontend lint / typecheck / build.
 - 2026-10-06: Celery late acknowledgement, re-queue on worker loss, one GPU job per worker.
 - 2026-10-06: FLEURS quality benchmark (CER/WER, real-time factor, chrF++, BLEU, full cascade).

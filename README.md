@@ -259,6 +259,18 @@ Both tracks have a semi-transparent black background box (`black@0.65`). Font: M
 
 **Job stuck on "translating"**
 - Check Ollama is running: `ollama list`. The translation model must be pulled first.
+- If Ollama drops the connection mid-job (restart, crash), the job shows "retrying" and is re-run up to twice,
+  30 s apart, like a Redis or network error. A CUDA out-of-memory error is never retried; it fails with a hint.
+
+## Tests
+
+The backend tests need no GPU, Redis, Ollama or downloads: translation batching and retries run against a fake
+OpenAI-compatible server (`backend/tests/conftest.py`), alongside the SRT helpers, job-failure classification
+(`backend/app/errors.py`) and the quality-eval metrics.
+
+```bash
+cd backend && pip install -r evals/requirements.txt httpx openai pydantic-settings && python -m pytest -q tests
+```
 
 ## License
 

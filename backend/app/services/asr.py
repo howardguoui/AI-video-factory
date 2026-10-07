@@ -24,13 +24,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def seconds_to_srt_time(seconds: float) -> str:
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int(round((seconds % 1) * 1000))
-    if millis >= 1000:
-        millis = 0
-        secs += 1
+    # Round once to whole milliseconds, then split, so 59.9996 s carries into
+    # the minute ("00:01:00,000") instead of producing an invalid "00:00:60,000".
+    total_ms = max(0, int(round(seconds * 1000)))
+    hours, rem = divmod(total_ms, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, millis = divmod(rem, 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
@@ -153,18 +152,8 @@ def _subprocess_transcribe(config_json: str, parent_sys_path: list) -> None:
         # ---- write SRT ----
         srt_path = cfg["srt_path"]
 
-        def _to_srt_time(s: float) -> str:
-            h, m = int(s // 3600), int((s % 3600) // 60)
-            sec, ms = int(s % 60), int(round((s % 1) * 1000))
-            if ms >= 1000:
-                ms, sec = 0, sec + 1
-            return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
-
-        lines = []
-        for i, seg in enumerate(all_segments, start=1):
-            lines.append(f"{i}\n{_to_srt_time(seg.start)} --> {_to_srt_time(seg.end)}\n{seg.text.strip()}\n")
         with open(srt_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+            f.write(segments_to_srt(all_segments))
 
         sub_log.info(f"[{job_id}] SRT written: {srt_path}")
 

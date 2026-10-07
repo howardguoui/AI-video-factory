@@ -10,6 +10,23 @@
 
 ## Session Log
 
+### Session — 2026-10-07
+**Completed:**
+- [x] Backend unit tests without a GPU (ROADMAP item): 33 new tests, 40 total, ~5 s, no GPU / Redis / Ollama needed.
+  - `tests/conftest.py`: a fake OpenAI-compatible `/v1/chat/completions` server (stdlib `http.server`) driven by the real
+    `openai` client. `tests/test_translate.py` covers batching in 20s with timing preserved, fenced JSON, the stricter
+    retry after malformed JSON, recursive halving when a model merges lines, the keep-original fallback, webpage text,
+    and the "Cannot reach Ollama" error.
+  - `tests/test_srt.py`: timestamp formatting, write → parse round trip, CRLF and broken blocks.
+  - `tests/test_errors.py`: CUDA OOM vs transient vs ordinary failures, including wrapped and self-referencing chains.
+- [x] Bug: `seconds_to_srt_time` (and its copy in the ASR subprocess, which writes the real SRT) turned 59.9996 s into
+  the invalid timestamp `00:00:60,000`; it now rounds to whole milliseconds once and carries into minutes/hours. The
+  subprocess now reuses `segments_to_srt` instead of a duplicate formatter.
+- [x] Bug: job failures were classified from `str(exc)` only, and every step wraps its exception, so a dropped Ollama
+  connection (`openai.APIConnectionError`, message "Connection error.") or a bare socket timeout ("timed out") was
+  never treated as transient. Classification moved to `app/errors.py` (no Celery/Redis/torch imports, so it is
+  testable) and walks the exception chain, matching types as well as messages.
+
 ### Session — 2026-10-06
 **Completed:**
 - [x] Frontend lint clean (`eslint .` → 0 problems; was 1 error + 2 warnings). `tsc --noEmit` passes; `next build --webpack` passes.

@@ -8,6 +8,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from celery.signals import worker_shutdown
 
 from app.config import settings
+from app.errors import is_cuda_oom, is_transient
 from app.state import update_status, get_job_data
 
 logger = logging.getLogger(__name__)
@@ -94,17 +95,6 @@ def _free_gpu() -> None:
             torch.cuda.synchronize()
     except Exception:
         pass
-
-
-def _is_cuda_oom(msg: str) -> bool:
-    return any(kw in msg for kw in ("CUDA out of memory", "OutOfMemoryError", "out of memory"))
-
-
-def _is_transient(msg: str) -> bool:
-    return any(kw in msg for kw in (
-        "ConnectionError", "TimeoutError", "redis", "ECONNREFUSED",
-        "Connection refused", "BrokenPipeError",
-    ))
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +278,7 @@ def process_video(
         error_msg = str(exc)
 
         # CUDA out of memory — not transient, don't retry
-        if _is_cuda_oom(error_msg):
+        if is_cuda_oom(exc):
             user_msg = (
                 "GPU ran out of memory. Try reducing asr_chunk_minutes "
                 "or switching to a smaller Whisper model."
@@ -298,7 +288,7 @@ def process_video(
             raise
 
         # Transient infrastructure error (Redis, network) — retry
-        if _is_transient(error_msg) and attempt <= self.max_retries:
+        if is_transient(exc) and attempt <= self.max_retries:
             logger.warning(
                 f"[{job_id}] Transient error on attempt {attempt}, "
                 f"retrying in {self.default_retry_delay}s: {exc}"
