@@ -1,5 +1,10 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
+export interface StageVram {
+  peak_mib: number;
+  total_mib: number;
+}
+
 export interface JobResponse {
   job_id: string;
   status: string;
@@ -17,6 +22,8 @@ export interface JobResponse {
   translated_vtt?: string;
   bilingual_download?: string;
   source_url?: string | null;
+  /** Peak device-wide GPU memory per pipeline stage, in run order. */
+  stage_vram?: Record<string, StageVram>;
 }
 
 export async function createJob(formData: FormData): Promise<{ job_id: string; label: string }> {

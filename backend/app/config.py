@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     indextts_root: str = "F:/index-tts-20/index-tts-20"
     # Qwen3-TTS — root directory (contains qwen_tts/ package + Qwen3-TTS-12Hz-1.7B-Base/ weights)
     qwen3_tts_root: str = "F:/Qwen3-TTS"
+    # Per-stage VRAM telemetry (NVML via nvidia-ml-py): peak GPU memory per pipeline stage, shown on the job page
+    vram_telemetry: bool = True
+    vram_gpu_index: int = 0             # NVML device index (NVML orders by PCI bus, not CUDA_VISIBLE_DEVICES)
+    vram_sample_interval_s: float = 0.25
     log_level: str = "INFO"
 
 

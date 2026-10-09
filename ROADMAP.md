@@ -11,8 +11,6 @@ Day-to-day session notes stay in PROGRESS.md.
       the estimated figures in `docs/reviews/2026-10-04-model-upgrade.md` with measured ones.
 - [ ] **End-to-end GPU run of every mode** (dub, mp3_only, subtitles_export, webpage) with per-stage timings
       recorded per job, so speed-ups are measured, not estimated.
-- [ ] **Per-stage VRAM telemetry:** sample NVML during each stage and store peak VRAM per stage on the job, shown
-      on the job page; proves the four stages fit in 16 GB and shows the headroom.
 - [ ] **Context-aware translation:** pass the previous segments as context to the LLM and measure the chrF++ change
       on FLEURS before switching the default.
 - [ ] **Remove the RecentJobs remount key** in `app/page.tsx` now that the job-history store notifies subscribers.
@@ -23,6 +21,8 @@ Day-to-day session notes stay in PROGRESS.md.
 
 ## Shipped
 
+- 2026-10-09: Per-stage VRAM telemetry: NVML peak per stage stored on the job and shown on the job page (the
+  measured 16 GB figures come from Howard's next GPU run).
 - 2026-10-07: Backend unit tests without a GPU: error classification (CUDA OOM vs transient), SRT helpers,
   translation batching and retry against a fake OpenAI-compatible server. Fixed SRT timestamps that rounded to
   ":60" seconds, and Ollama connection drops that were never retried.

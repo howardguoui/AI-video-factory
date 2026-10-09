@@ -117,6 +117,11 @@ USE_STUB_TTS=true
 
 # GPU device for TTS
 QWEN_DEVICE=cuda
+
+# Per-stage VRAM telemetry (needs nvidia-ml-py; turns itself off without an NVIDIA driver)
+VRAM_TELEMETRY=true
+VRAM_GPU_INDEX=0               # NVML index (PCI bus order, ignores CUDA_VISIBLE_DEVICES)
+VRAM_SAMPLE_INTERVAL_S=0.25
 ```
 
 ### 4. Frontend — Node dependencies
@@ -187,6 +192,9 @@ Open http://localhost:3000 in your browser.
 6. Once complete, the result page shows:
    - In-browser video player with switchable subtitle tracks (Original / Translation / Both / Off)
    - **Download with Bilingual Subtitles** — downloads a burned-in MP4 with yellow Chinese subtitles at the bottom and white English subtitles above
+   - **GPU Memory per Stage** — the peak VRAM the worker sampled over NVML while each stage ran (also after a
+     failure, so an out-of-memory stage shows how close it got). The figure is device-wide: it includes the Whisper
+     subprocess, Ollama, the TTS model and anything else on the GPU, which is what decides whether a stage fits.
 
 ## Pipeline Steps & Estimated Time
 
@@ -209,6 +217,7 @@ AI-video-factory/
 │   │   ├── config.py            # Pydantic settings, reads .env
 │   │   ├── worker.py            # Celery task: full pipeline orchestration
 │   │   ├── state.py             # Redis-backed job state (set/get/update)
+│   │   ├── vram.py              # NVML sampler: peak GPU memory per pipeline stage
 │   │   ├── models/
 │   │   │   └── job.py           # JobResponse Pydantic model
 │   │   ├── routers/
@@ -226,7 +235,8 @@ AI-video-factory/
 │   ├── components/
 │   │   ├── UploadForm.tsx       # File picker, language selector, pipeline mode
 │   │   ├── VideoPlayer.tsx      # HTML5 video + subtitle mode switcher
-│   │   └── JobStatus.tsx        # Step progress indicator
+│   │   ├── JobStatus.tsx        # Step progress indicator
+│   │   └── StageVram.tsx        # Peak GPU memory per stage
 │   └── lib/
 │       └── api.ts               # API client (createJob, getJob, getFileUrl)
 └── README.md
@@ -266,7 +276,8 @@ Both tracks have a semi-transparent black background box (`black@0.65`). Font: M
 
 The backend tests need no GPU, Redis, Ollama or downloads: translation batching and retries run against a fake
 OpenAI-compatible server (`backend/tests/conftest.py`), alongside the SRT helpers, job-failure classification
-(`backend/app/errors.py`) and the quality-eval metrics.
+(`backend/app/errors.py`), per-stage VRAM telemetry against a fake NVML module (`backend/tests/test_vram.py`) and the
+quality-eval metrics.
 
 ```bash
 cd backend && pip install -r evals/requirements.txt httpx openai pydantic-settings && python -m pytest -q tests

@@ -10,6 +10,21 @@
 
 ## Session Log
 
+### Session — 2026-10-09
+**Completed:**
+- [x] Per-stage VRAM telemetry (ROADMAP item). `backend/app/vram.py` runs a daemon thread that polls NVML
+  (`nvmlDeviceGetMemoryInfo(...).used`, nvidia-ml-py, checked against its 13.615 source) every 0.25 s while a
+  stage runs, plus one sample at start and stop so short stages still get a reading. `worker._step` wraps every stage
+  in it and stores `{stage: {peak_mib, total_mib}}` on the job through `update_status(stage_vram=...)`, including
+  when the stage fails, so an OOM shows how close it got. Device-wide by design: the Whisper subprocess and Ollama
+  run in other processes, so a per-process figure would miss most of the memory.
+  - Best-effort: no nvidia-ml-py, no driver, a bad device index or a failing Redis write records nothing and never
+    fails the job. `VRAM_TELEMETRY`, `VRAM_GPU_INDEX`, `VRAM_SAMPLE_INTERVAL_S` in `.env`.
+  - `GET /api/jobs/{id}` returns `stage_vram`; the job page shows a "GPU Memory per Stage" card (bar per stage,
+    amber at 85 %, red at 95 %, peak and headroom in the header).
+  - 16 new tests in `tests/test_vram.py` against a fake NVML module (56 total, no GPU).
+  - No VRAM numbers are written down yet: they come from the next real run on the RTX 5070 Ti.
+
 ### Session — 2026-10-07
 **Completed:**
 - [x] Backend unit tests without a GPU (ROADMAP item): 33 new tests, 40 total, ~5 s, no GPU / Redis / Ollama needed.

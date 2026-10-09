@@ -10,6 +10,7 @@ from celery.signals import worker_shutdown
 from app.config import settings
 from app.errors import is_cuda_oom, is_transient
 from app.state import update_status, get_job_data
+from app.vram import track_stage_vram
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +70,21 @@ def _step(job_id: str, name: str):
     """
     Context manager for a single pipeline step.
     - Logs start, elapsed time, and success/failure
+    - Records the stage's peak GPU memory on the job (also when it fails)
     - Re-raises exceptions wrapped with the step name so the UI shows
       exactly which step failed (e.g. "Step 'transcribe' failed after 42s: ...")
     """
     t0 = time.monotonic()
     logger.info(f"[{job_id}] ▶ {name}")
     try:
-        yield
+        with track_stage_vram(
+            name,
+            lambda stage, peak: _safe_update_status(job_id, None, stage_vram={stage: peak}),
+            enabled=settings.vram_telemetry,
+            device_index=settings.vram_gpu_index,
+            interval_s=settings.vram_sample_interval_s,
+        ):
+            yield
     except SoftTimeLimitExceeded:
         raise  # propagate to outer handler unchanged
     except Exception as exc:

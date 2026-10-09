@@ -36,6 +36,7 @@ def update_status(
     source_vtt: str | None = None,
     translated_vtt: str | None = None,
     bilingual_download: str | None = None,
+    stage_vram: dict | None = None,
 ) -> None:
     data = get_job_data(job_id) or {}
     if status is not None:
@@ -56,4 +57,7 @@ def update_status(
         data["translated_vtt"] = translated_vtt
     if bilingual_download is not None:
         data["bilingual_download"] = bilingual_download
+    if stage_vram is not None:
+        # {stage: {"peak_mib", "total_mib"}}; merged so each stage adds its own entry.
+        data["stage_vram"] = {**(data.get("stage_vram") or {}), **stage_vram}
     set_job(job_id, data)

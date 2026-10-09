@@ -1,6 +1,11 @@
 from pydantic import BaseModel
 
 
+class StageVram(BaseModel):
+    peak_mib: int
+    total_mib: int
+
+
 class JobResponse(BaseModel):
     job_id: str
     status: str
@@ -18,3 +23,5 @@ class JobResponse(BaseModel):
     translated_vtt: str | None = None
     bilingual_download: str | None = None
     source_url: str | None = None
+    # Peak device-wide GPU memory per pipeline stage, in the order the stages ran.
+    stage_vram: dict[str, StageVram] = {}

@@ -6,6 +6,7 @@ import { getJob, getFileUrl, type JobResponse } from "@/lib/api";
 import { updateJobStatus } from "@/lib/jobHistory";
 import { JobStatus } from "@/components/JobStatus";
 import { VideoPlayer } from "@/components/VideoPlayer";
+import { StageVram } from "@/components/StageVram";
 
 export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -117,6 +118,9 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
             Loading job status…
           </div>
         ) : null}
+
+        {/* Peak GPU memory per stage (shown while running too, and after a failure) */}
+        {job?.stage_vram && <StageVram stages={job.stage_vram} />}
 
         {/* Video player */}
         {outputUrl && (

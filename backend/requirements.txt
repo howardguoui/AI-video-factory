@@ -9,5 +9,6 @@ openai
 moviepy
 ffmpeg-python
 torch
+nvidia-ml-py  # NVML bindings (module pynvml) for per-stage VRAM telemetry
 yt-dlp
 trafilatura
